@@ -8,6 +8,7 @@ import { CARD_H, CARD_W, layoutTree } from '../lib/layout';
 import { displayName, isRtl, lifeSpan, relationLabel } from '../lib/i18n';
 import { useLang } from '../lib/LangContext';
 import { Avatar } from './Avatar';
+import { Icon } from './Icons';
 
 interface Props {
   graph: FamilyGraph;
@@ -58,22 +59,22 @@ export function TreeView({ graph, relations, focusId, viewerId, selectedId, side
     const minX = Math.min(...xs) - CARD_W / 2, maxX = Math.max(...xs) + CARD_W / 2;
     const minY = Math.min(...ys) - CARD_H / 2, maxY = Math.max(...ys) + CARD_H / 2;
     // the part of the screen not covered by the person panel
-    const W = el.clientWidth, H = el.clientHeight, pad = 40;
-    const mobile = W < 720;
-    let x0 = 0, x1 = W, y1 = H;
-    if (panelOpen && !mobile) {
-      if (rtl) x0 = 384;
-      else x1 = W - 384;
-    }
-    if (panelOpen && mobile) y1 = H * 0.3;
-    const w = x1 - x0, h = y1;
-    const minScale = mobile ? 0.5 : 0.6;
+    const W = el.clientWidth, H = el.clientHeight;
+    const mobile = W <= 720;
+    const pad = mobile ? 16 : 40;
+    // phone: the person sheet covers the bottom part (on a computer it sits beside the tree)
+    const x0 = 0, x1 = W, y0 = 0;
+    let y1 = H;
+    if (panelOpen && mobile) y1 = H * 0.42;
+    const w = x1 - x0, h = y1 - y0;
+    // on a phone keep cards readable (the tree can be dragged) rather than shrinking it to fit
+    const minScale = mobile ? 0.8 : 0.6;
     const k = Math.min(1, (w - pad * 2) / (maxX - minX), (h - pad * 2) / (maxY - minY));
     let tf;
     if (k >= minScale) {
-      tf = zoomIdentity.translate(x0 + w / 2 - ((minX + maxX) / 2) * k, h / 2 - ((minY + maxY) / 2) * k).scale(k);
+      tf = zoomIdentity.translate(x0 + w / 2 - ((minX + maxX) / 2) * k, y0 + h / 2 - ((minY + maxY) / 2) * k).scale(k);
     } else {
-      tf = zoomIdentity.translate(x0 + w / 2, h / 2).scale(minScale);
+      tf = zoomIdentity.translate(x0 + w / 2, y0 + h / 2).scale(minScale);
     }
     // animate programmatic moves only (never while the user drags)
     setAnimating(true);
@@ -131,9 +132,9 @@ export function TreeView({ graph, relations, focusId, viewerId, selectedId, side
         })}
       </div>
       <div className="zoom-buttons">
-        <button onClick={() => zoomBy(1.25)} aria-label={t('zoomIn')}>+</button>
-        <button onClick={() => zoomBy(0.8)} aria-label={t('zoomOut')}>−</button>
-        <button onClick={fit} aria-label={t('fit')} title={t('fit')}>⤢</button>
+        <button onClick={() => zoomBy(1.25)} aria-label={t('zoomIn')}><Icon name="plus" /></button>
+        <button onClick={() => zoomBy(0.8)} aria-label={t('zoomOut')}><Icon name="minus" /></button>
+        <button onClick={fit} aria-label={t('fit')} title={t('fit')}><Icon name="fit" /></button>
       </div>
     </div>
   );

@@ -3,10 +3,25 @@ import type { LifeEvent, Person, Sex } from '../types';
 import type { FamilyGraph } from '../lib/graph';
 import type { RelativeKind, UnionDetails } from '../lib/ops';
 import { UnionFields, validUnion } from './UnionForm';
-import { displayName, type MsgKey } from '../lib/i18n';
+import { displayName, formatDate, type MsgKey } from '../lib/i18n';
 import { compressImage } from '../lib/image';
 import { useLang } from '../lib/LangContext';
 import { Avatar } from './Avatar';
+import { Icon } from './Icons';
+
+/** A form section: always open on a computer; on a phone it folds to one line with a summary. */
+function Section({ title, summary, open, onToggle, children }: { title: string; summary: string; open: boolean; onToggle: () => void; children: ReactNode }) {
+  return (
+    <section className={`fsec${open ? '' : ' closed'}`}>
+      <button type="button" className="fsec-head" onClick={onToggle} aria-expanded={open}>
+        <span className="fsec-title">{title}</span>
+        {summary && <span className="fsec-sum">{summary}</span>}
+        <Icon name={open ? 'up' : 'down'} size={18} className="fsec-chev" />
+      </button>
+      <div className="fsec-body">{children}</div>
+    </section>
+  );
+}
 
 interface Props {
   graph: FamilyGraph;
@@ -90,6 +105,14 @@ export function PersonForm({ graph, initial, adding, onSave, onCancel, uploadPho
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [details, setDetails] = useState<UnionDetails>({ kind: 'married' });
+  // phone: sections fold away (on a computer they are always open)
+  const [openSecs, setOpenSecs] = useState<Set<string>>(() => new Set(adding || initial.firstName === '' ? ['names', 'sex', 'birth'] : ['names']));
+  const toggleSec = (k: string) => setOpenSecs((cur) => {
+    const next = new Set(cur);
+    if (next.has(k)) next.delete(k);
+    else next.add(k);
+    return next;
+  });
 
   const set = <K extends keyof Person>(k: K, v: Person[K]) => setP((cur) => ({ ...cur, [k]: v }));
   const setSex = (sex: Sex) => setP((cur) => withSuggestions({ ...cur, sex }, sex, unionId, touched));
@@ -105,9 +128,11 @@ export function PersonForm({ graph, initial, adding, onSave, onCancel, uploadPho
     });
 
   const submit = () => {
-    if (!p.firstName.trim() && !p.firstNameHe?.trim()) return setError(t('needName'));
-    for (const ev of [p.birth, p.death, p.burial]) if (ev?.date && !DATE_RE.test(ev.date)) return setError(t('dateHint'));
-    if (adding?.kind === 'partner' && !validUnion(details)) return setError(t('dateHint'));
+    // unfold every section so the field at fault is visible on a phone
+    const fail = (msg: string) => { setError(msg); setOpenSecs(new Set(['names', 'sex', 'birth', 'death', 'bio'])); };
+    if (!p.firstName.trim() && !p.firstNameHe?.trim()) return fail(t('needName'));
+    for (const ev of [p.birth, p.death, p.burial]) if (ev?.date && !DATE_RE.test(ev.date)) return fail(t('dateHint'));
+    if (adding?.kind === 'partner' && !validUnion(details)) return fail(t('dateHint'));
     onSave(p, unionId || undefined, adding?.kind === 'partner' ? details : undefined);
   };
 
@@ -168,14 +193,23 @@ export function PersonForm({ graph, initial, adding, onSave, onCancel, uploadPho
     );
   };
 
+  const title = adding && anchor
+    ? t('addingAs', { rel: t(ADD_LABEL[adding.kind]), name: displayName(anchor, lang) })
+    : displayName(p, lang);
+  const sec = (key: string, label: string, summary: string, body: ReactNode) => (
+    <Section title={label} summary={summary} open={openSecs.has(key)} onToggle={() => toggleSec(key)}>{body}</Section>
+  );
+  const evSummary = (ev?: LifeEvent) => [formatDate(ev, lang), ev?.place].filter(Boolean).join(', ');
+
   return (
     <div className="modal-backdrop" onClick={onCancel}>
-      <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); submit(); }}>
-        <h2>
-          {adding && anchor
-            ? t('addingAs', { rel: t(ADD_LABEL[adding.kind]), name: displayName(anchor, lang) })
-            : displayName(p, lang)}
-        </h2>
+      <form className="modal person-form" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); submit(); }}>
+        <div className="form-topbar">
+          <button type="button" className="btn ghost" onClick={onCancel}>{t('cancel')}</button>
+          <b className="form-topbar-title">{title}</b>
+          <button type="submit" className="btn primary" disabled={busy}>{t('save')}</button>
+        </div>
+        {error && <p className="error">{error}</p>}
 
         <div className="photo-row">
           <Avatar person={p} size={72} />
@@ -202,7 +236,7 @@ export function PersonForm({ graph, initial, adding, onSave, onCancel, uploadPho
 
         {adding?.kind === 'partner' && <UnionFields value={details} onChange={setDetails} />}
 
-        <fieldset>
+        {sec('names', t('namesSection'), '', <>
           <p className="hint">{t('namesHint')}</p>
           <div className="grid2">
             {text('firstNameHe', 'rtl')}
@@ -212,58 +246,57 @@ export function PersonForm({ graph, initial, adding, onSave, onCancel, uploadPho
             {text('marriedNameHe', 'rtl')}
             {text('marriedName', 'ltr')}
           </div>
-        </fieldset>
+        </>)}
 
-        <fieldset className="radios">
-          <legend>{t('sex')}</legend>
-          {(['M', 'F', 'U'] as Sex[]).map((s) => (
-            <label key={s}>
-              <input type="radio" name="sex" checked={p.sex === s} onChange={() => setSex(s)} />
-              {t(s === 'M' ? 'male' : s === 'F' ? 'female' : 'unknown')}
-            </label>
-          ))}
-        </fieldset>
+        {sec('sex', t('sex'), t(p.sex === 'M' ? 'male' : p.sex === 'F' ? 'female' : 'unknown'), (
+          <div className="radios">
+            {(['M', 'F', 'U'] as Sex[]).map((s) => (
+              <label key={s}>
+                <input type="radio" name="sex" checked={p.sex === s} onChange={() => setSex(s)} />
+                {t(s === 'M' ? 'male' : s === 'F' ? 'female' : 'unknown')}
+              </label>
+            ))}
+          </div>
+        ))}
 
-        <fieldset>
-          <legend>{t('born')}</legend>
+        {sec('birth', t('born'), evSummary(p.birth), <>
           {eventFields('birth')}
           <p className="hint">{t('dateHint')}</p>
-        </fieldset>
+        </>)}
 
-        <label className="check">
-          <input type="checkbox" checked={p.deceased} onChange={(e) => set('deceased', e.target.checked)} />
-          {t('deceased')}
-        </label>
-        {p.deceased && (
-          <>
-            <fieldset>
-              <legend>{t('died')}</legend>
-              {eventFields(
-                'death',
-                true,
-                <label className="field">
-                  <span>{t('cause')}</span>
-                  <input value={p.death?.cause ?? ''} onChange={(e) => setEv('death', { cause: e.target.value })} />
-                </label>,
-              )}
-            </fieldset>
-            <fieldset>
-              <legend>{t('buried')}</legend>
-              {eventFields('burial', false)}
-            </fieldset>
-          </>
-        )}
+        {sec('death', t('deathSection'), p.deceased ? evSummary(p.death) || t('deceased') : t('alive'), <>
+          <label className="check">
+            <input type="checkbox" checked={p.deceased} onChange={(e) => set('deceased', e.target.checked)} />
+            {t('deceased')}
+          </label>
+          {p.deceased && (
+            <>
+              <fieldset>
+                <legend>{t('died')}</legend>
+                {eventFields(
+                  'death',
+                  true,
+                  <label className="field">
+                    <span>{t('cause')}</span>
+                    <input value={p.death?.cause ?? ''} onChange={(e) => setEv('death', { cause: e.target.value })} />
+                  </label>,
+                )}
+              </fieldset>
+              <fieldset>
+                <legend>{t('buried')}</legend>
+                {eventFields('burial', false)}
+              </fieldset>
+            </>
+          )}
+        </>)}
 
-        <label className="field">
-          <span>{t('bio')}</span>
-          <textarea rows={4} value={p.bio ?? ''} onChange={(e) => set('bio', e.target.value || undefined)} />
-        </label>
+        {sec('bio', t('bio'), p.bio ? '✓' : '', (
+          <label className="field">
+            <span className="desk-only">{t('bio')}</span>
+            <textarea rows={4} value={p.bio ?? ''} onChange={(e) => set('bio', e.target.value || undefined)} aria-label={t('bio')} />
+          </label>
+        ))}
 
-        {error && <p className="error">{error}</p>}
-        <div className="modal-actions">
-          <button type="submit" className="btn primary" disabled={busy}>{t('save')}</button>
-          <button type="button" className="btn ghost" onClick={onCancel}>{t('cancel')}</button>
-        </div>
       </form>
     </div>
   );

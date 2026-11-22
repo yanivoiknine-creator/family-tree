@@ -5,6 +5,7 @@ import { displayName, factLabel, formatDate, type MsgKey } from '../lib/i18n';
 import { useLang } from '../lib/LangContext';
 import { Avatar } from './Avatar';
 import { docKind } from '../lib/ops';
+import { Icon } from './Icons';
 
 interface Props {
   graph: FamilyGraph;
@@ -101,7 +102,7 @@ export function ReviewPage({ graph, findings, decisions, resolveId, onDecide, on
             </button>
           ))}
           <label className="check">
-            <input type="checkbox" checked={photosOnly} onChange={(e) => setPhotosOnly(e.target.checked)} /> {t('photosOnly')}
+            <input type="checkbox" checked={photosOnly} onChange={(e) => setPhotosOnly(e.target.checked)} /> <Icon name="image" size={18} /> {t('photosOnly')}
           </label>
         </div>
 

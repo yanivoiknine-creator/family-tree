@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import type { Person, PersonDoc } from '../types';
-import { displayName } from '../lib/i18n';
+import { displayName, isRtl } from '../lib/i18n';
 import { useLang } from '../lib/LangContext';
 import { compressImage } from '../lib/image';
 import { docKind, newId } from '../lib/ops';
+import { swipeHandlers } from '../lib/useMobile';
+import { Icon } from './Icons';
 
 const MAX_FILE = 20 * 1024 * 1024;
 
@@ -15,7 +17,7 @@ export function downloadHref(doc: PersonDoc): string {
   return doc.url;
 }
 
-function Thumb({ doc, onClick }: { doc: PersonDoc; onClick: () => void }) {
+export function Thumb({ doc, onClick }: { doc: PersonDoc; onClick: () => void }) {
   return (
     <button type="button" className="doc-thumb" onClick={onClick} title={doc.title || doc.name}>
       {doc.kind === 'image' ? (
@@ -87,6 +89,13 @@ export function DocumentsGallery({ person, editMode, startIndex, startAdding, up
   const name = displayName(person, lang);
   const canEdit = editMode !== 'none';
   const current = viewing !== null ? docs[viewing] : undefined;
+  const [zoomed, setZoomed] = useState(false);
+  useEffect(() => setZoomed(false), [viewing]);
+  const go = (step: number) => viewing !== null && setViewing((viewing + step + docs.length) % docs.length);
+  const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+  const share = (doc: PersonDoc) => {
+    navigator.share({ title: doc.title || doc.name, text: `${doc.title || doc.name} · ${name}`, url: doc.url }).catch(() => undefined);
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -151,39 +160,63 @@ export function DocumentsGallery({ person, editMode, startIndex, startAdding, up
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal gallery" onClick={(e) => e.stopPropagation()} role="dialog" aria-label={t('documents')}>
+      <div className={`modal gallery${current ? ' viewing' : ''}`} onClick={(e) => e.stopPropagation()} role="dialog" aria-label={t('documents')}>
         <header className="gallery-head">
+          {current && (
+            <button className="icon-btn big mobile-only" onClick={() => setViewing(null)} aria-label={t('backToAll')}>
+              <Icon name={isRtl(lang) ? 'forward' : 'back'} size={22} />
+            </button>
+          )}
           <h2>{t('documents')} · {name}</h2>
+          {current && <span className="doc-count mobile-only" dir="ltr">{viewing! + 1} / {docs.length}</span>}
           <button className="panel-close" onClick={onClose} aria-label={t('close')}>×</button>
         </header>
 
         {current ? (
           <div className="doc-view">
-            <div className="doc-stage">
+            <div
+              className={`doc-stage${zoomed ? ' zoomed' : ''}`}
+              onDoubleClick={() => current.kind === 'image' && setZoomed(!zoomed)}
+              {...swipeHandlers((dir) => {
+                if (zoomed || docs.length < 2 || (dir !== 'left' && dir !== 'right')) return;
+                // the next file comes from the reading direction's end
+                const forward = isRtl(lang) ? dir === 'right' : dir === 'left';
+                go(forward ? 1 : -1);
+              }, 50)}
+            >
               {current.kind === 'image' ? (
                 <img src={current.url} alt={current.title || current.name} referrerPolicy="no-referrer" />
               ) : current.kind === 'pdf' ? (
                 <iframe src={current.url} title={current.title || current.name} />
               ) : (
-                <span className="doc-icon big">📄</span>
+                <Icon name="doc" size={64} className="doc-icon big" />
               )}
               {docs.length > 1 && <>
-                <button className="doc-nav prev" onClick={() => setViewing((viewing! - 1 + docs.length) % docs.length)} aria-label="‹">‹</button>
-                <button className="doc-nav next" onClick={() => setViewing((viewing! + 1) % docs.length)} aria-label="›">›</button>
+                <button className="doc-nav prev" onClick={() => go(-1)} aria-label="‹">‹</button>
+                <button className="doc-nav next" onClick={() => go(1)} aria-label="›">›</button>
               </>}
             </div>
+            {docs.length > 1 && (
+              <div className="doc-dots mobile-only" aria-hidden="true">
+                {docs.map((d, i) => <span key={d.id} className={i === viewing ? 'on' : ''} />)}
+              </div>
+            )}
+            <p className="doc-hint mobile-only">{t(current.kind === 'image' ? 'swipeHint' : 'swipeHintFile')}</p>
             <div className="doc-meta">
               <b>{current.title || current.name}</b>
-              <span className="muted">{viewing! + 1} / {docs.length}</span>
+              <span className="muted desk-only">{viewing! + 1} / {docs.length}</span>
               {current.sourceUrl && (
                 <a href={current.sourceUrl} target="_blank" rel="noreferrer noopener">{t('source')} ↗</a>
               )}
             </div>
             <div className="modal-actions doc-actions">
-              <button className="btn" onClick={() => setViewing(null)}>{t('backToAll')}</button>
-              <a className="btn" href={current.url} target="_blank" rel="noreferrer noopener">{t('openNewTab')}</a>
-              <a className="btn primary" href={downloadHref(current)} download={current.name}>⬇ {t('download')}</a>
-              {canEdit && <button className="btn danger" onClick={() => remove(current)}>{t('delete')}</button>}
+              <button className="btn desk-only" onClick={() => setViewing(null)}>{t('backToAll')}</button>
+              <a className="btn primary" href={downloadHref(current)} download={current.name}><Icon name="download" /><span>{t('download')}</span></a>
+              {canShare && (
+                <button className="btn" onClick={() => share(current)}><Icon name="share" /><span>{t('share')}</span></button>
+              )}
+              <a className="btn" href={current.url} target="_blank" rel="noreferrer noopener"><Icon name="external" /><span>{t('openNewTab')}</span></a>
+              {canEdit && <button className="btn danger" onClick={() => remove(current)}><Icon name="trash" /><span>{t('delete')}</span></button>}
             </div>
           </div>
         ) : (

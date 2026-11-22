@@ -7,7 +7,7 @@ import {
   type RelativeKind, type UnionDetails,
 } from './lib/ops';
 import { applyChange, diffData, isEmptyChange } from './lib/diff';
-import { LANGS, displayName, isRtl, translate, type Lang, type MsgKey } from './lib/i18n';
+import { displayName, isRtl, translate, type Lang, type MsgKey } from './lib/i18n';
 import { LangContext } from './lib/LangContext';
 import { initialLang, prefs } from './lib/prefs';
 import type { Profile, Role } from './lib/supabase';
@@ -26,6 +26,12 @@ import { AdminPage, AdminTools, ImportPanel, type AdminTab } from './components/
 import { SuggestionsList } from './components/SuggestionsList';
 import { UsersAdmin } from './components/UsersAdmin';
 import { DocumentsGallery } from './components/Documents';
+import { AccountMenu, FilterChips, NavBar, type NavItem } from './components/MobileChrome';
+import { useIsMobile } from './lib/useMobile';
+import { Icon } from './components/Icons';
+
+const initialsOf = (name?: string | null) =>
+  (name ?? '').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
 
 const localStore = new LocalStore();
 
@@ -64,6 +70,7 @@ export default function App({ cloud }: { cloud?: CloudSession }) {
   const [up, setUp] = useState(3);
   const [down, setDown] = useState(2);
   const [view, setView] = useState<'tree' | 'admin' | 'map'>('tree');
+  const mobile = useIsMobile();
   const [adminTab, setAdminTab] = useState<AdminTab>('suggestions');
   const [form, setForm] = useState<FormState | null>(null);
   const [editingUnion, setEditingUnion] = useState<{ unionId: string; fromId: string } | null>(null);
@@ -371,178 +378,171 @@ export default function App({ cloud }: { cloud?: CloudSession }) {
     />
   );
 
+  // ---------- chrome: navigation, account menu, person panel ----------
+  const navItems: NavItem[] = [
+    { key: 'tree', label: t('tree'), icon: 'tree', active: view === 'tree', onClick: () => setView('tree') },
+    { key: 'map', label: t('map'), icon: 'map', active: view === 'map', onClick: () => setView('map') },
+    ...(isAdmin ? [{
+      key: 'admin', label: cloud ? t('manage') : t('review'), icon: 'manage', active: view === 'admin', badge: adminBadge,
+      onClick: () => setView('admin'),
+    }] : []),
+    ...(viewerId && graph.get(viewerId) ? [{ key: 'me', label: t('me'), icon: 'person', onClick: () => openPerson(viewerId) }] : []),
+  ];
+  const accountMenu = (
+    <AccountMenu
+      avatarUrl={cloud?.profile.avatar_url}
+      name={cloud?.profile.display_name ?? undefined}
+      email={cloud?.profile.email}
+      initials={initialsOf(cloud?.profile.display_name)}
+      roleLabel={cloud ? t(`role_${role}` as MsgKey) : undefined}
+      badge={0}
+      onMyCard={viewerId && graph.get(viewerId) ? () => openPerson(viewerId) : undefined}
+      onLang={setLang}
+      onSignOut={cloud?.signOut}
+    />
+  );
+  const personPanel = selected && (
+    <PersonPanel
+      graph={graph}
+      person={selected}
+      relations={relations}
+      isAdmin={isAdmin}
+      editMode={editMode}
+      onOpen={openPerson}
+      onEdit={() => setForm({ mode: 'edit', person: selected })}
+      onEditUnion={(unionId) => setEditingUnion({ unionId, fromId: selected.id })}
+      onAdd={(kind) => setForm({ mode: 'add', kind, anchorId: selected.id, person: blankPerson() })}
+      onDelete={() => remove(selected)}
+      onClose={() => setSelectedId(undefined)}
+      onDocuments={(index, adding) => setGallery({ personId: selected.id, index, adding })}
+    />
+  );
+
   return (
     <LangContext.Provider value={{ lang, t }}>
       <div className="app">
         <header className="topbar">
-          <div className="brand" onClick={() => setView('tree')}>
+          {!mobile && <div className="brand" onClick={() => setView('tree')}>
             <img className="logo" src={`${import.meta.env.BASE_URL}logo-256.png`} alt="" />
             <h1>{t('appTitle')}</h1>
+          </div>}
+          <div className="searchbar">
+            <Icon name="search" className="searchbar-icon" />
+            <SearchBox graph={graph} onPick={openPerson} />
+            {mobile && accountMenu}
           </div>
-          <SearchBox graph={graph} onPick={openPerson} />
-          <div className="top-actions">
-            {!namesOnly && (
-              <div className="segmented" role="tablist">
-                <button className={`seg${view === 'tree' ? ' on' : ''}`} onClick={() => setView('tree')}>🌳 {t('tree')}</button>
-                <button className={`seg${view === 'map' ? ' on' : ''}`} onClick={() => setView('map')}>🗺 {t('map')}</button>
-              </div>
-            )}
-            {isAdmin && (
-              <button className={`btn review-btn${view === 'admin' ? ' on' : ''}`} onClick={() => setView(view === 'admin' ? 'tree' : 'admin')}>
-                {view === 'admin' ? t('backToTree') : cloud ? t('manage') : t('review')}
-                {view !== 'admin' && adminBadge > 0 && <span className="badge">{adminBadge}</span>}
-              </button>
-            )}
-            <select className="lang" value={lang} onChange={(e) => setLang(e.target.value as Lang)} aria-label="Language">
-              {LANGS.map((l) => <option key={l.code} value={l.code}>{l.label}</option>)}
-            </select>
-            {cloud && (
-              <div className="user-chip" title={cloud.profile.email ?? ''}>
-                {cloud.profile.avatar_url && <img src={cloud.profile.avatar_url} alt="" referrerPolicy="no-referrer" />}
-                <button className="btn ghost small" onClick={cloud.signOut}>{t('signOut')}</button>
-              </div>
-            )}
-          </div>
+          {!mobile && <div className="top-actions">{accountMenu}</div>}
         </header>
 
         {namesOnly && (
           <div className="banner">
-            <span>⏳ {t('pendingBanner')}</span>
+            <span>{t('pendingBanner')}</span>
             {cloud && cloud.profile.attempts < 3 && (
-              <button className="btn small" onClick={cloud.openRegister}>{t('fixDetails')}</button>
+              <button className="btn ghost small" onClick={cloud.openRegister}>{t('fixDetails')}</button>
             )}
           </div>
         )}
 
-        {view !== 'admin' && hasPeople && (
-          <div className="toolbar">
-            <div className="segmented" role="group">
-              {(['all', 'father', 'mother'] as Side[]).map((s) => (
-                <button key={s} className={`seg${side === s ? ' on' : ''}`} onClick={() => setSide(s)}>
-                  {t(s === 'all' ? 'sideAll' : s === 'father' ? 'sideFather' : 'sideMother')}
-                </button>
-              ))}
-            </div>
-            {view === 'tree' && <>
-            <label className="depth">
-              {t('generationsUp')}
-              <select value={up} onChange={(e) => setUp(Number(e.target.value))}>
-                {[1, 2, 3, 4, 5, 6].map((n) => <option key={n}>{n}</option>)}
-              </select>
-            </label>
-            <label className="depth">
-              {t('generationsDown')}
-              <select value={down} onChange={(e) => setDown(Number(e.target.value))}>
-                {[0, 1, 2, 3, 4].map((n) => <option key={n}>{n}</option>)}
-              </select>
-            </label>
-            {focusId !== viewerId && viewerId && (
-              <button className="btn small" onClick={() => openPerson(viewerId)}>⟲ {t('backToMe')}</button>
-            )}
-            </>}
-          </div>
-        )}
-
-        <main className="main">
-          {view === 'admin' && isAdmin ? (
-            cloud ? (
-              <AdminPage
-                tab={adminTab}
-                onTab={setAdminTab}
-                tabs={{
-                  suggestions: [
-                    <SuggestionsList graph={graph} suggestions={suggestions} profiles={profileMap} onDecide={decideSuggestion} onShowPerson={openPerson} />,
-                    pendingSuggestions,
-                  ],
-                  research: [research, pendingFindings],
-                  users: [
-                    <UsersAdmin
-                      graph={graph}
-                      profiles={profiles}
-                      meId={cloud.profile.user_id}
-                      onRole={async (p, r) => { await cloudStore.setRole(p.user_id, r); await afterUserChange(p); }}
-                      onLink={async (p, pid) => {
-                        await cloudStore.link(p.user_id, pid);
-                        setData(await cloudStore.load(false)); // the Google photo may have been added
-                        await afterUserChange(p);
-                      }}
-                      onShowPerson={openPerson}
-                    />,
-                    pendingUsers,
-                  ],
-                  import: [
-                    <AdminTools
-                      newFindings={newLocalFindings.length}
-                      onUploadFindings={uploadNewFindings}
-                      leftoverFiles={leftoverFiles.length}
-                      onCleanup={cleanupLeftovers}
-                      onBackup={downloadBackup}
-                      importPanel={canImport && localData ? (
-                        <ImportPanel
-                          counts={{
-                            people: Object.keys(localData.people).length,
-                            unions: Object.keys(localData.unions).length,
-                            findings: LOCAL_FINDINGS.length,
-                            decisions: Object.keys(localDecisions).length,
-                          }}
-                          onImport={(progress) => cloudStore.importAll(localData, LOCAL_FINDINGS, localDecisions, progress)}
-                        />
-                      ) : undefined}
-                    />,
-                    newLocalFindings.length,
-                  ],
-                }}
-              />
-            ) : (
-              <div className="review"><div className="review-inner">{research}</div></div>
-            )
-          ) : view === 'map' && !namesOnly ? (
-            <MapView graph={graph} relations={relations} side={side} isAdmin={isAdmin} onOpenPerson={openPerson} />
-          ) : hasPeople && graph.get(focusId) ? (
-            <>
-              <TreeView
-                graph={graph}
-                relations={relations}
-                focusId={focusId}
-                viewerId={viewerId}
-                selectedId={selectedId}
-                side={side}
-                up={up}
-                down={down}
-                onSelect={openPerson}
-                panelOpen={Boolean(selected)}
-              />
-              {selected && (
-                <PersonPanel
-                  graph={graph}
-                  person={selected}
-                  relations={relations}
-                  isAdmin={isAdmin}
-                  editMode={editMode}
-                  onOpen={openPerson}
-                  onEdit={() => setForm({ mode: 'edit', person: selected })}
-                  onEditUnion={(unionId) => setEditingUnion({ unionId, fromId: selected.id })}
-                  onAdd={(kind) => setForm({ mode: 'add', kind, anchorId: selected.id, person: blankPerson() })}
-                  onDelete={() => remove(selected)}
-                  onClose={() => setSelectedId(undefined)}
-                  onDocuments={(index, adding) => setGallery({ personId: selected.id, index, adding })}
+        <div className="app-body">
+          {!namesOnly && !mobile && <NavBar variant="rail" items={navItems} />}
+          <div className="workspace">
+            <main className="main">
+              {view !== 'admin' && hasPeople && (
+                <FilterChips
+                  side={side} up={up} down={down} showDepth={view === 'tree'} onSide={setSide} onUp={setUp} onDown={setDown}
+                  onMe={view === 'tree' && viewerId && graph.get(viewerId) ? () => openPerson(viewerId) : undefined}
                 />
               )}
-            </>
-          ) : (
-            <div className="empty-state">
-              <p>{t('emptyTree')}</p>
-              {isAdmin && (
-                <div className="empty-actions">
-                  {cloud && canImport && (
-                    <button className="btn primary" onClick={() => { setView('admin'); setAdminTab('import'); }}>{t('tabImport')}</button>
-                  )}
-                  <button className="btn" onClick={() => setForm({ mode: 'first', person: blankPerson() })}>{t('addFirstPerson')}</button>
-                </div>
-              )}
-            </div>
-          )}
-        </main>
+              <div className="canvas">
+                {view === 'admin' && isAdmin ? (
+                  cloud ? (
+                    <AdminPage
+                      tab={adminTab}
+                      onTab={setAdminTab}
+                      tabs={{
+                        suggestions: [
+                          <SuggestionsList graph={graph} suggestions={suggestions} profiles={profileMap} onDecide={decideSuggestion} onShowPerson={openPerson} />,
+                          pendingSuggestions,
+                        ],
+                        research: [research, pendingFindings],
+                        users: [
+                          <UsersAdmin
+                            graph={graph}
+                            profiles={profiles}
+                            meId={cloud.profile.user_id}
+                            onRole={async (p, r) => { await cloudStore.setRole(p.user_id, r); await afterUserChange(p); }}
+                            onLink={async (p, pid) => {
+                              await cloudStore.link(p.user_id, pid);
+                              setData(await cloudStore.load(false)); // the Google photo may have been added
+                              await afterUserChange(p);
+                            }}
+                            onShowPerson={openPerson}
+                          />,
+                          pendingUsers,
+                        ],
+                        import: [
+                          <AdminTools
+                            newFindings={newLocalFindings.length}
+                            onUploadFindings={uploadNewFindings}
+                            leftoverFiles={leftoverFiles.length}
+                            onCleanup={cleanupLeftovers}
+                            onBackup={downloadBackup}
+                            importPanel={canImport && localData ? (
+                              <ImportPanel
+                                counts={{
+                                  people: Object.keys(localData.people).length,
+                                  unions: Object.keys(localData.unions).length,
+                                  findings: LOCAL_FINDINGS.length,
+                                  decisions: Object.keys(localDecisions).length,
+                                }}
+                                onImport={(progress) => cloudStore.importAll(localData, LOCAL_FINDINGS, localDecisions, progress)}
+                              />
+                            ) : undefined}
+                          />,
+                          newLocalFindings.length,
+                        ],
+                      }}
+                    />
+                  ) : (
+                    <div className="review"><div className="review-inner">{research}</div></div>
+                  )
+                ) : view === 'map' && !namesOnly ? (
+                  <MapView graph={graph} relations={relations} side={side} isAdmin={isAdmin} onOpenPerson={openPerson} />
+                ) : hasPeople && graph.get(focusId) ? (
+                  <>
+                    <TreeView
+                      graph={graph}
+                      relations={relations}
+                      focusId={focusId}
+                      viewerId={viewerId}
+                      selectedId={selectedId}
+                      side={side}
+                      up={up}
+                      down={down}
+                      onSelect={openPerson}
+                      panelOpen={Boolean(selected)}
+                    />
+                    {mobile && personPanel}
+                  </>
+                ) : (
+                  <div className="empty-state">
+                    <p>{t('emptyTree')}</p>
+                    {isAdmin && (
+                      <div className="empty-actions">
+                        {cloud && canImport && (
+                          <button className="btn primary" onClick={() => { setView('admin'); setAdminTab('import'); }}>{t('tabImport')}</button>
+                        )}
+                        <button className="btn" onClick={() => setForm({ mode: 'first', person: blankPerson() })}>{t('addFirstPerson')}</button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </main>
+            {!mobile && view === 'tree' && personPanel}
+          </div>
+        </div>
+        {!namesOnly && mobile && <NavBar variant="bar" items={navItems} />}
 
         {!cloud && (
           <footer className="devbar">

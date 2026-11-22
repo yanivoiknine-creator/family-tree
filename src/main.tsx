@@ -4,6 +4,7 @@ import App from './App';
 import { AuthGate } from './components/AuthGate';
 import { CLOUD } from './lib/supabase';
 import './styles.css';
+import './material.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

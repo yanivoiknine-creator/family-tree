@@ -25,5 +25,5 @@ export default defineConfig({
   plugins: [keepPrivateDataOut(), react()],
   base: './',
   // the upload copy and notes are rewritten by scripts; watching them can crash the dev server on Windows
-  server: { watch: { ignored: ['**/upload.local/**', '**/notes.local/**', '**/dist/**'] } },
+  server: { watch: { ignored: ['**/upload.local/**', '**/notes.local/**', '**/design-backup.local/**', '**/dist/**'] } },
 });

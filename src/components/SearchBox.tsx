@@ -1,10 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FamilyGraph } from '../lib/graph';
 import { displayName, lifeSpan, searchText } from '../lib/i18n';
 import { useLang } from '../lib/LangContext';
 import { Avatar } from './Avatar';
 
-export function SearchBox({ graph, onPick }: { graph: FamilyGraph; onPick: (id: string) => void }) {
+export function SearchBox({ graph, onPick, autoFocus }: { graph: FamilyGraph; onPick: (id: string) => void; autoFocus?: boolean }) {
   const { lang, t } = useLang();
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
@@ -27,9 +27,15 @@ export function SearchBox({ graph, onPick }: { graph: FamilyGraph; onPick: (id: 
     setOpen(false);
   };
 
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (autoFocus) inputRef.current?.focus();
+  }, [autoFocus]);
+
   return (
     <div className="search">
       <input
+        ref={inputRef}
         type="search"
         value={q}
         placeholder={t('searchPlaceholder')}
