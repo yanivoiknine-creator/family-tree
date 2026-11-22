@@ -52,10 +52,19 @@ export function applyChange(data: FamilyData, change: Change): FamilyData {
         const was = (before as Record<string, unknown>)[k];
         const now = merged[k];
         if (Array.isArray(v) && Array.isArray(was) && Array.isArray(now)) {
-          // lists of ids (children, partners): replay the additions and removals only
-          const removed = was.filter((x) => !v.includes(x));
-          const added = v.filter((x) => !was.includes(x));
-          merged[k] = [...now.filter((x) => !removed.includes(x)), ...added.filter((x) => !now.includes(x))];
+          // lists (children ids, facts, documents): replay the additions and removals only.
+          // Items are compared by id or content, since they come from separately parsed JSON.
+          const key = (x: unknown) =>
+            x && typeof x === 'object' ? ((x as { id?: string }).id ?? JSON.stringify(x)) : String(x);
+          const has = (list: unknown[], x: unknown) => list.some((y) => key(y) === key(x));
+          const removed = was.filter((x) => !has(v, x));
+          const added = v.filter((x) => !has(was, x));
+          // an item edited in place (same id, new content) replaces the current one
+          const edited = new Map(v.filter((x) => has(was, x) && !same(x, was.find((y) => key(y) === key(x)))).map((x) => [key(x), x]));
+          merged[k] = [
+            ...now.filter((x) => !has(removed, x)).map((x) => edited.get(key(x)) ?? x),
+            ...added.filter((x) => !has(now, x)),
+          ];
         } else if (v === undefined) delete merged[k];
         else merged[k] = v;
       }

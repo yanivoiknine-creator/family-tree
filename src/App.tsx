@@ -22,11 +22,19 @@ import { PersonPanel } from './components/PersonPanel';
 import { PersonForm } from './components/PersonForm';
 import { SearchBox } from './components/SearchBox';
 import { ReviewPage } from './components/ReviewPage';
-import { AdminPage, ImportPanel, type AdminTab } from './components/AdminPage';
+import { AdminPage, AdminTools, ImportPanel, type AdminTab } from './components/AdminPage';
 import { SuggestionsList } from './components/SuggestionsList';
 import { UsersAdmin } from './components/UsersAdmin';
+import { DocumentsGallery } from './components/Documents';
 
 const localStore = new LocalStore();
+
+/** The file a photo or document finding points to. */
+function findingFileUrl(f: Finding): string | undefined {
+  if (f.field === 'photo') return typeof f.value === 'string' ? f.value : undefined;
+  if (f.field === 'document') return (f.value as { url?: string } | null)?.url || undefined;
+  return undefined;
+}
 
 const ADD_LABEL: Record<RelativeKind, MsgKey> = { parent: 'addParent', partner: 'addPartner', child: 'addChild', sibling: 'addSibling' };
 
@@ -59,6 +67,7 @@ export default function App({ cloud }: { cloud?: CloudSession }) {
   const [adminTab, setAdminTab] = useState<AdminTab>('suggestions');
   const [form, setForm] = useState<FormState | null>(null);
   const [editingUnion, setEditingUnion] = useState<{ unionId: string; fromId: string } | null>(null);
+  const [gallery, setGallery] = useState<{ personId: string; index?: number; adding?: boolean } | null>(null);
   const [findings, setFindings] = useState<Finding[]>(cloud ? [] : LOCAL_FINDINGS);
   const [decisions, setDecisions] = useState<Record<string, DecisionRecord>>(() => (cloud ? {} : localSavedDecisions()));
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -229,6 +238,9 @@ export default function App({ cloud }: { cloud?: CloudSession }) {
       if (dependents) return alert(t('undoDependentsFirst'));
     }
     let f = finding;
+    if (d === 'approved' && (finding.field === 'photo' || finding.field === 'document') && !findingFileUrl(finding)) {
+      return alert(t('fileDeleted'));
+    }
     if (d === 'approved') {
       const pid = resolvePersonId(finding.personId);
       if (!pid) return alert(t('approveFirst', { name: finding.personName ?? '?' }));
@@ -259,6 +271,29 @@ export default function App({ cloud }: { cloud?: CloudSession }) {
     if (next !== data) commit(next, `${t('review')}: ${finding.personName ?? ''}`);
     setDecisions(rec);
     if (cloud) cloudStore.saveDecision(f.id, rec[f.id] ?? null).catch((e) => alert(`${t('saveFailed')}: ${e?.message ?? e}`));
+    if (cloud && d === 'rejected') dropRejectedFile(finding, next, rec);
+  };
+
+  /** The stored file of a rejected finding that nothing else needs any more (the tree or another open finding). */
+  const droppableFile = (finding: Finding, tree: FamilyData, rec: Record<string, DecisionRecord>) => {
+    const url = findingFileUrl(finding);
+    if (!url || !url.includes('/storage/v1/object/public/') || rec[finding.id]?.d !== 'rejected') return undefined;
+    const inTree = Object.values(tree.people).some((p) => p.photo === url || p.documents?.some((doc) => doc.url === url));
+    const inOther = findings.some((x) => x.id !== finding.id && rec[x.id]?.d !== 'rejected' && findingFileUrl(x) === url);
+    return inTree || inOther ? undefined : url;
+  };
+
+  /** A rejected scan or photo shouldn't take space: delete its file. */
+  const dropRejectedFile = async (finding: Finding, tree: FamilyData, rec: Record<string, DecisionRecord>, quiet = false) => {
+    const url = droppableFile(finding, tree, rec);
+    if (!url) return;
+    try {
+      const stored = await cloudStore.dropFindingFile(finding, url);
+      setFindings((cur) => cur.map((x) => (x.id === stored.id ? stored : x)));
+    } catch (e) {
+      if (quiet) throw e;
+      alert(`${t('fileDeleteFailed')}\n${(e as Error)?.message ?? e}`);
+    }
   };
 
   const simpleDecisions = Object.fromEntries(Object.entries(decisions).map(([k, v]) => [k, v.d]));
@@ -284,9 +319,44 @@ export default function App({ cloud }: { cloud?: CloudSession }) {
     if (p.user_id === cloud?.profile.user_id) await cloud.refreshProfile();
   };
 
-  const localData = cloud && isAdmin ? localSavedData() ?? SEED_DATA : null;
-  const localDecisions = cloud && isAdmin ? localSavedDecisions() : {};
+  // The full move from the prototype is offered only while the cloud tree is empty,
+  // so stale browser data can never overwrite edits made on the live site.
+  const cloudTreeEmpty = Object.keys(data.people).length === 0;
+  const localData = cloud && isAdmin && cloudTreeEmpty ? localSavedData() ?? SEED_DATA : null;
+  const localDecisions = localData ? localSavedDecisions() : {};
   const canImport = Boolean(localData && (Object.keys(localData.people).length || LOCAL_FINDINGS.length));
+  // New research files on this computer (dev server only - builds contain none) that the cloud doesn't have yet.
+  const cloudFindingIds = new Set(findings.map((f) => f.id));
+  const newLocalFindings = cloud && isAdmin && !cloudTreeEmpty ? LOCAL_FINDINGS.filter((f) => !cloudFindingIds.has(f.id)) : [];
+  const uploadNewFindings = async () => {
+    await cloudStore.addFindings(newLocalFindings, findings.length);
+    setFindings(await cloudStore.loadFindings());
+    showToast(t('researchUploaded', { n: String(newLocalFindings.length) }));
+    setAdminTab('research');
+  };
+  // files of findings rejected earlier (before files were deleted on rejection, or when deleting failed)
+  const leftoverFiles = cloud && isAdmin ? findings.filter((f) => droppableFile(f, data, decisions)) : [];
+  const cleanupLeftovers = async () => {
+    const done = new Set<string>();
+    for (const f of leftoverFiles) {
+      const url = findingFileUrl(f)!;
+      if (done.has(url)) {
+        // the same file under another rejected finding: already gone, just clear this finding too
+        const stored = await cloudStore.dropFindingFile(f, '');
+        setFindings((cur) => cur.map((x) => (x.id === stored.id ? stored : x)));
+      } else await dropRejectedFile(f, data, decisions, true);
+      done.add(url);
+    }
+    showToast(t('cleanupDone', { n: String(leftoverFiles.length) }));
+  };
+  const downloadBackup = () => {
+    const json = JSON.stringify({ exportedAt: new Date().toISOString(), data, decisions, findings }, null, 1);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+    a.download = 'family-export.local.json';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
   const profileMap = Object.fromEntries(profiles.map((p) => [p.user_id, p]));
 
   const research = (
@@ -400,22 +470,27 @@ export default function App({ cloud }: { cloud?: CloudSession }) {
                     />,
                     pendingUsers,
                   ],
-                  ...(canImport && localData
-                    ? {
-                        import: [
-                          <ImportPanel
-                            counts={{
-                              people: Object.keys(localData.people).length,
-                              unions: Object.keys(localData.unions).length,
-                              findings: LOCAL_FINDINGS.length,
-                              decisions: Object.keys(localDecisions).length,
-                            }}
-                            onImport={(progress) => cloudStore.importAll(localData, LOCAL_FINDINGS, localDecisions, progress)}
-                          />,
-                          0,
-                        ] as [JSX.Element, number],
-                      }
-                    : {}),
+                  import: [
+                    <AdminTools
+                      newFindings={newLocalFindings.length}
+                      onUploadFindings={uploadNewFindings}
+                      leftoverFiles={leftoverFiles.length}
+                      onCleanup={cleanupLeftovers}
+                      onBackup={downloadBackup}
+                      importPanel={canImport && localData ? (
+                        <ImportPanel
+                          counts={{
+                            people: Object.keys(localData.people).length,
+                            unions: Object.keys(localData.unions).length,
+                            findings: LOCAL_FINDINGS.length,
+                            decisions: Object.keys(localDecisions).length,
+                          }}
+                          onImport={(progress) => cloudStore.importAll(localData, LOCAL_FINDINGS, localDecisions, progress)}
+                        />
+                      ) : undefined}
+                    />,
+                    newLocalFindings.length,
+                  ],
                 }}
               />
             ) : (
@@ -450,6 +525,7 @@ export default function App({ cloud }: { cloud?: CloudSession }) {
                   onAdd={(kind) => setForm({ mode: 'add', kind, anchorId: selected.id, person: blankPerson() })}
                   onDelete={() => remove(selected)}
                   onClose={() => setSelectedId(undefined)}
+                  onDocuments={(index, adding) => setGallery({ personId: selected.id, index, adding })}
                 />
               )}
             </>
@@ -536,6 +612,23 @@ export default function App({ cloud }: { cloud?: CloudSession }) {
             />
           );
         })()}
+
+        {gallery && data.people[gallery.personId] && (
+          <DocumentsGallery
+            key={gallery.personId}
+            person={data.people[gallery.personId]}
+            editMode={editMode}
+            startIndex={gallery.index}
+            startAdding={gallery.adding}
+            upload={(id, blob, name) => (cloud ? cloudStore.uploadFile(id, blob, name) : localStore.uploadFile(id, blob, name))}
+            onSave={(documents, summary) => {
+              // keep an empty list rather than dropping the field, so a suggested removal merges as a removal
+              commit(upsertPerson(data, { ...data.people[gallery.personId], documents }), summary);
+              if (editMode === 'suggest') setGallery(null); // members' changes wait for an admin
+            }}
+            onClose={() => setGallery(null)}
+          />
+        )}
 
         {form && (
           <PersonForm

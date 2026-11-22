@@ -318,6 +318,10 @@ create policy "members upload photos" on storage.objects for insert to authentic
   with check (bucket_id = 'photos' and public.is_member());
 create policy "admins delete photos" on storage.objects for delete to authenticated
   using (bucket_id = 'photos' and public.is_admin());
+-- deleting a file also needs permission to see its row (storage.remove reads it back)
+drop policy if exists "admins list photos" on storage.objects;
+create policy "admins list photos" on storage.objects for select to authenticated
+  using (bucket_id = 'photos' and public.is_admin());
 
 -- =====================================================================
 -- After you sign in to the site with Google for the first time, make

@@ -54,6 +54,16 @@ async function dataUrlToBlob(url: string): Promise<Blob> {
   return (await fetch(url)).blob();
 }
 
+/** The inline (data:) picture of a photo or document finding, if it has one. */
+function inlineUrl(f: Finding): string | undefined {
+  if (f.field === 'photo' && typeof f.value === 'string' && f.value.startsWith('data:')) return f.value;
+  if (f.field === 'document') {
+    const url = (f.value as { url?: string } | null)?.url;
+    if (url?.startsWith('data:')) return url;
+  }
+  return undefined;
+}
+
 export class CloudStore {
   /** The data as last loaded or saved, to work out what changed on the next save. */
   private snapshot: FamilyData = { people: {}, unions: {} };
@@ -122,6 +132,43 @@ export class CloudStore {
     return sb().storage.from('photos').getPublicUrl(path).data.publicUrl;
   }
 
+  /** Stores a document or picture for a person; the file name stays random so the address can't be guessed. */
+  async uploadFile(personId: string, blob: Blob, fileName: string): Promise<string> {
+    const ext = (fileName.match(/\.([a-z0-9]{1,5})$/i)?.[1] ?? 'bin').toLowerCase();
+    const path = `docs/${personId.replace(/[^\w-]/g, '_')}/${crypto.randomUUID()}.${ext}`;
+    must(await sb().storage.from('photos').upload(path, blob, { contentType: blob.type || 'application/octet-stream', upsert: false }));
+    return sb().storage.from('photos').getPublicUrl(path).data.publicUrl;
+  }
+
+  /** Research files keep pictures inline (data: URLs); move them to Storage before the findings go to the cloud. */
+  private async storeInlineFiles(findings: Finding[], onProgress?: (msg: string) => void): Promise<Finding[]> {
+    const inline = findings.filter((f) => inlineUrl(f) !== undefined);
+    let done = 0;
+    const out: Finding[] = [];
+    const stored = new Map<string, string>(); // the same scan attached to several people is uploaded once
+    for (const f of findings) {
+      const url = inlineUrl(f);
+      if (url === undefined) {
+        out.push(f);
+        continue;
+      }
+      onProgress?.(`📄 ${++done}/${inline.length}`);
+      const blob = await dataUrlToBlob(url);
+      if (f.field === 'photo') {
+        const target = stored.get(url) ?? (await this.uploadPhoto(f.personId.replace(/[^\w-]/g, '_'), blob));
+        stored.set(url, target);
+        out.push({ ...f, value: target });
+      } else {
+        const v = f.value as { url: string; name?: string };
+        const name = v.name ?? `document.${blob.type === 'application/pdf' ? 'pdf' : 'jpg'}`;
+        const target = stored.get(url) ?? (await this.uploadFile(f.personId, blob, name));
+        stored.set(url, target);
+        out.push({ ...f, value: { ...v, name, url: target } });
+      }
+    }
+    return out;
+  }
+
   // ---------- suggestions ----------
 
   async suggest(change: Change, summary: string): Promise<void> {
@@ -168,6 +215,32 @@ export class CloudStore {
     must(await sb().rpc('admin_link', { target: userId, pid: personId }));
   }
 
+  /** Adds research findings that are not in the cloud yet, after the existing ones. Never touches the tree. */
+  async addFindings(findings: Finding[], startPos: number, onProgress?: (msg: string) => void): Promise<void> {
+    const ready = await this.storeInlineFiles(findings, onProgress);
+    const rows = ready.map((f, i) => ({ id: f.id, data: { ...f, _pos: startPos + i } }));
+    for (const part of chunks(rows, 200)) must(await sb().from('findings').upsert(part, { ignoreDuplicates: true }));
+  }
+
+  /**
+   * A rejected photo/document finding: delete its file from Storage and keep the finding without it,
+   * so rejected research takes no space. Returns the finding as now stored.
+   */
+  async dropFindingFile(f: Finding, url: string): Promise<Finding> {
+    const marker = '/storage/v1/object/public/photos/';
+    const at = url.indexOf(marker);
+    if (at >= 0) {
+      const removed = must(await sb().storage.from('photos').remove([decodeURIComponent(url.slice(at + marker.length).split('?')[0])]));
+      // without permission Storage deletes nothing and reports no error: keep the finding as it was
+      if (!removed?.length) throw new Error('file not deleted (storage policy missing?)');
+    }
+    const value = f.field === 'photo' ? '' : { ...(f.value as object), url: '' };
+    const { data } = must(await sb().from('findings').select('data').eq('id', f.id).single()) as unknown as { data: Finding };
+    const next = { ...data, value } as Finding;
+    must(await sb().from('findings').update({ data: next }).eq('id', f.id));
+    return next;
+  }
+
   // ---------- one-time move from the local prototype ----------
 
   async importAll(
@@ -198,8 +271,9 @@ export class CloudStore {
       must(await sb().from('people').upsert(part));
     }
     for (const part of chunks(rows(data.unions), 200)) must(await sb().from('unions').upsert(part));
-    onProgress(`🔎 ${findings.length}`);
-    const findingRows = findings.map((f, i) => ({ id: f.id, data: { ...f, _pos: i } }));
+    const ready = await this.storeInlineFiles(findings, onProgress);
+    onProgress(`🔎 ${ready.length}`);
+    const findingRows = ready.map((f, i) => ({ id: f.id, data: { ...f, _pos: i } }));
     for (const part of chunks(findingRows, 200)) must(await sb().from('findings').upsert(part));
     const decisionRows = Object.entries(decisions).map(([finding_id, record]) => ({ finding_id, record, decided_at: now }));
     for (const part of chunks(decisionRows, 200)) must(await sb().from('finding_decisions').upsert(part));

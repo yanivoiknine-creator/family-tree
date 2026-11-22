@@ -29,6 +29,10 @@ export class LocalStore {
     return blobToDataUrl(blob);
   }
 
+  async uploadFile(_personId: string, blob: Blob, _fileName: string): Promise<string> {
+    return blobToDataUrl(blob);
+  }
+
   async reset(): Promise<FamilyData> {
     try {
       localStorage.removeItem(DATA_KEY);

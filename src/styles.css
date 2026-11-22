@@ -489,3 +489,62 @@ dd { margin: 0; display: flex; flex-direction: column; gap: 1px; }
 .change-tag.new { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
 .change-tag.deleted { background: color-mix(in srgb, var(--danger) 15%, transparent); color: var(--danger); }
 .change-tag.edited { background: color-mix(in srgb, var(--gold) 18%, transparent); color: var(--gold); }
+
+/* ---------- Photos & documents ---------- */
+.doc-strip h3 .count { font-size: 12px; background: var(--surface-2); border-radius: 999px; padding: 0 7px; margin-inline-start: 4px; }
+.doc-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.doc-thumb {
+  width: 68px; height: 68px; padding: 0; overflow: hidden; flex: none;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2);
+  display: inline-grid; place-items: center; color: var(--ink-2); cursor: pointer;
+}
+.doc-thumb:hover { border-color: var(--accent); }
+.doc-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.doc-thumb.more { font-weight: 700; font-size: 15px; }
+.doc-row.small .doc-thumb { width: 44px; height: 44px; }
+.doc-icon { font-weight: 700; font-size: 14px; letter-spacing: 0.04em; color: var(--accent); }
+.doc-icon.big { font-size: 64px; }
+.doc-strip-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+
+.modal.gallery { width: min(900px, 100%); }
+.gallery-head { position: relative; padding-inline-end: 36px; }
+.gallery-head .panel-close { top: -4px; inset-inline-end: -6px; }
+.doc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
+.doc-grid figure { margin: 0; position: relative; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.doc-grid .doc-thumb { width: 100%; height: auto; aspect-ratio: 1; }
+.doc-grid figcaption { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.doc-dl {
+  position: absolute; top: 6px; inset-inline-end: 6px; width: 28px; height: 28px; border-radius: 8px;
+  display: grid; place-items: center; text-decoration: none; font-size: 14px;
+  background: var(--surface); border: 1px solid var(--line); color: var(--ink);
+}
+.doc-dl:hover { border-color: var(--accent); color: var(--accent); }
+.doc-view { display: flex; flex-direction: column; gap: 10px; }
+.doc-stage {
+  position: relative; background: var(--surface-2); border-radius: 12px; min-height: 240px;
+  display: grid; place-items: center; overflow: hidden;
+}
+.doc-stage img { max-width: 100%; max-height: 68vh; object-fit: contain; display: block; }
+.doc-stage iframe { width: 100%; height: 68vh; border: 0; background: #fff; }
+.doc-nav {
+  position: absolute; top: 50%; transform: translateY(-50%); width: 40px; height: 40px; border-radius: 50%;
+  border: 1px solid var(--line); background: var(--surface); font-size: 24px; line-height: 1; box-shadow: var(--shadow);
+}
+.doc-nav.prev { left: 10px; }
+.doc-nav.next { right: 10px; }
+.doc-meta { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+.doc-actions { flex-wrap: wrap; }
+.doc-actions a.btn { text-decoration: none; display: inline-flex; align-items: center; }
+.doc-actions a.btn:not(.primary) { color: var(--ink); }
+.doc-add { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
+.doc-add h3 { margin: 0; font-size: 15px; }
+.doc-add label.btn { align-self: flex-start; cursor: pointer; }
+.doc-pending { display: flex; gap: 8px; align-items: center; }
+.doc-file { font-size: 13px; color: var(--ink-2); max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-pending input { flex: 1; min-width: 0; border: 1px solid var(--line); background: var(--surface-2); border-radius: 9px; padding: 7px 10px; }
+.finding-doc { display: inline-flex; flex-direction: column; gap: 4px; text-decoration: none; color: inherit; }
+@media (max-width: 560px) {
+  .doc-pending { flex-wrap: wrap; }
+  .doc-file { max-width: 100%; }
+  .doc-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
+}

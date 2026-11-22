@@ -4,6 +4,7 @@ import type { FamilyGraph } from '../lib/graph';
 import { displayName, factLabel, formatDate, type MsgKey } from '../lib/i18n';
 import { useLang } from '../lib/LangContext';
 import { Avatar } from './Avatar';
+import { docKind } from '../lib/ops';
 
 interface Props {
   graph: FamilyGraph;
@@ -42,7 +43,7 @@ export function ReviewPage({ graph, findings, decisions, resolveId, onDecide, on
     return c;
   }, [findings, decisions]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const visible = findings.filter((f) => stateOf(f) === tab && (!photosOnly || f.field === 'photo'));
+  const visible = findings.filter((f) => stateOf(f) === tab && (!photosOnly || f.field === 'photo' || f.field === 'document'));
   // group by person, keeping the research order
   const groups = new Map<string, Finding[]>();
   for (const f of visible) groups.set(f.personId, [...(groups.get(f.personId) ?? []), f]);
@@ -55,6 +56,7 @@ export function ReviewPage({ graph, findings, decisions, resolveId, onDecide, on
       return `${t(GROUP_LABEL[g] ?? 'facts')} · ${t(KEY_LABEL[k] ?? 'facts')}`;
     }
     if (field === 'fact') return t('facts');
+    if (field === 'document') return t('document');
     const known = ['bio', 'photo', 'firstName', 'lastName', 'firstNameHe', 'lastNameHe', 'marriedName', 'marriedNameHe', 'sex'];
     return known.includes(field) ? t(field as MsgKey) : field;
   };
@@ -63,6 +65,17 @@ export function ReviewPage({ graph, findings, decisions, resolveId, onDecide, on
     if (v === null || v === undefined || v === '') return <span className="muted">—</span>;
     if (f.field === 'sex') return <span>{t(v === 'M' ? 'male' : v === 'F' ? 'female' : 'unknown')}</span>;
     if (f.field === 'photo') return <img className="finding-photo" src={String(v)} alt="" referrerPolicy="no-referrer" loading="lazy" />;
+    if (f.field === 'document' && typeof v === 'object') {
+      const d = v as { url: string; title?: string; name?: string; kind?: string };
+      if (!d.url) return <span className="muted">{d.title ? `${d.title} · ` : ''}{t('fileDeleted')}</span>;
+      const isImage = (d.kind ?? docKind(d.name ?? d.url)) === 'image';
+      return (
+        <a className="finding-doc" href={d.url} target="_blank" rel="noreferrer noopener">
+          {isImage ? <img className="finding-photo" src={d.url} alt="" referrerPolicy="no-referrer" loading="lazy" /> : <span className="doc-icon">PDF</span>}
+          {d.title && <span>{d.title}</span>}
+        </a>
+      );
+    }
     if (f.field === 'fact' && typeof v === 'object') {
       const fv = v as { label: string; value: string };
       return <span>{factLabel(lang, fv.label)}: {fv.value}</span>;
@@ -114,7 +127,7 @@ export function ReviewPage({ graph, findings, decisions, resolveId, onDecide, on
                     <span className={`conf conf-${f.confidence}`}>{t(`conf_${f.confidence}` as MsgKey)}</span>
                   </div>
                   <div className="finding-values">
-                    {f.type === 'field' && f.field !== 'photo' && f.current !== undefined && f.current !== null && (
+                    {f.type === 'field' && f.field !== 'photo' && f.field !== 'document' && f.current !== undefined && f.current !== null && (
                       <div><span className="lbl">{t('current')}</span>{renderValue(f, f.current)}</div>
                     )}
                     <div><span className="lbl">{t('proposed')}</span>{renderValue(f, f.value)}</div>

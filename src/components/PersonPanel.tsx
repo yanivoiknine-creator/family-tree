@@ -5,6 +5,7 @@ import type { RelativeKind } from '../lib/ops';
 import { displayName, factLabel, formatDate, hebrewDate, nameParts, relationLabel, type MsgKey } from '../lib/i18n';
 import { useLang } from '../lib/LangContext';
 import { Avatar } from './Avatar';
+import { DocStrip } from './Documents';
 
 interface Props {
   graph: FamilyGraph;
@@ -19,9 +20,11 @@ interface Props {
   onAdd: (kind: RelativeKind) => void;
   onDelete: () => void;
   onClose: () => void;
+  /** open the photos & documents gallery */
+  onDocuments: (index?: number, adding?: boolean) => void;
 }
 
-export function PersonPanel({ graph, person, relations, isAdmin, editMode, onOpen, onEdit, onEditUnion, onAdd, onDelete, onClose }: Props) {
+export function PersonPanel({ graph, person, relations, isAdmin, editMode, onOpen, onEdit, onEditUnion, onAdd, onDelete, onClose, onDocuments }: Props) {
   const { lang, t } = useLang();
   const rel = relations?.get(person.id);
   const { née } = nameParts(person, lang);
@@ -88,6 +91,8 @@ export function PersonPanel({ graph, person, relations, isAdmin, editMode, onOpe
         {person.deceased && event('died', person.death, person.death?.cause ? `${t('cause')}: ${person.death.cause}` : !person.death ? t('deceased') : undefined)}
         {event('buried', person.burial)}
       </dl>
+
+      <DocStrip person={person} canAdd={editMode !== 'none'} onOpen={onDocuments} />
 
       {person.facts?.length ? (
         <section>

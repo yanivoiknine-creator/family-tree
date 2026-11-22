@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { LifeEvent, Person, Union } from '../types';
+import type { LifeEvent, Person, PersonDoc, Union } from '../types';
 import type { FamilyGraph } from '../lib/graph';
 import type { Profile } from '../lib/supabase';
 import type { Suggestion } from '../data/cloudStore';
@@ -18,7 +18,7 @@ interface Props {
 const FIELD_LABEL: Record<string, MsgKey> = {
   firstName: 'firstName', lastName: 'lastName', firstNameHe: 'firstNameHe', lastNameHe: 'lastNameHe',
   marriedName: 'marriedName', marriedNameHe: 'marriedNameHe', sex: 'sex', birth: 'born', death: 'died',
-  burial: 'buried', deceased: 'deceased', photo: 'photo', bio: 'bio', facts: 'facts',
+  burial: 'buried', deceased: 'deceased', photo: 'photo', bio: 'bio', facts: 'facts', documents: 'documents',
   partners: 'partners', children: 'children', kind: 'status', marriage: 'married', divorced: 'statusDivorced', divorce: 'divorce',
 };
 
@@ -35,6 +35,17 @@ export function SuggestionsList({ graph, suggestions, profiles, onDecide, onShow
   const value = (key: string, v: unknown) => {
     if (v === undefined || v === null || v === '') return <span className="muted">—</span>;
     if (key === 'photo') return <img className="finding-photo" src={String(v)} alt="" referrerPolicy="no-referrer" />;
+    if (key === 'documents') {
+      return (
+        <span className="doc-row small">
+          {(v as PersonDoc[]).map((d) => (
+            <a key={d.id} className="doc-thumb" href={d.url} target="_blank" rel="noreferrer noopener" title={d.title || d.name}>
+              {d.kind === 'image' ? <img src={d.url} alt="" referrerPolicy="no-referrer" loading="lazy" /> : <span className="doc-icon">PDF</span>}
+            </a>
+          ))}
+        </span>
+      );
+    }
     if (key === 'sex') return t(v === 'M' ? 'male' : v === 'F' ? 'female' : 'unknown');
     if (key === 'deceased' || key === 'divorced') return v ? '✓' : '✗';
     if (key === 'birth' || key === 'death' || key === 'burial' || key === 'marriage' || key === 'divorce') {

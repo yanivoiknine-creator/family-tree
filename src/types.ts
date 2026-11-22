@@ -26,10 +26,27 @@ export interface Person {
   /** true when the person is known to have died, even without a date */
   deceased: boolean;
   photo?: string;
+  /** Photos and documents about the person (certificates, records, old pictures) */
+  documents?: PersonDoc[];
   bio?: string;
   facts?: { label: string; value: string }[];
   /** Id from the source system (MyHeritage _UID), used for re-imports */
   externalId?: string;
+}
+
+/** A photo or document attached to a person. */
+export interface PersonDoc {
+  id: string;
+  /** Storage address (a data: URL in the browser-only prototype and in research files) */
+  url: string;
+  /** file name used when downloading */
+  name: string;
+  kind: 'image' | 'pdf' | 'file';
+  /** e.g. "Birth certificate, 1896" */
+  title?: string;
+  /** where it was found (archive page) */
+  sourceUrl?: string;
+  addedAt?: string;
 }
 
 /** A couple (or single parent) and their children. */
@@ -57,7 +74,8 @@ export interface Finding {
   personId: string;
   personName?: string;
   type: 'field' | 'newPerson';
-  /** for type 'field': birth.date, death.place, bio, fact, photo, firstNameHe, ... */
+  /** for type 'field': birth.date, death.place, bio, fact, photo, document, firstNameHe, ...
+   *  'document' takes a value of { url, name?, kind?, title?, sourceUrl? } and is added to the person's documents. */
   field?: string;
   /** for type 'newPerson' */
   relation?: 'parent' | 'child' | 'partner' | 'sibling';

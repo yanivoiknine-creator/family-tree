@@ -39,6 +39,82 @@ export function AdminPage({ tab, onTab, tabs }: Props) {
   );
 }
 
+interface ToolsProps {
+  /** research findings found on this computer that the cloud doesn't have yet */
+  newFindings: number;
+  onUploadFindings: () => Promise<void>;
+  /** files still stored for findings that were rejected */
+  leftoverFiles: number;
+  onCleanup: () => Promise<void>;
+  onBackup: () => void;
+  /** the one-time full import, shown only while the cloud tree is still empty */
+  importPanel?: ReactNode;
+}
+
+/** Admin tools: upload new research, download a backup, and (once) move the prototype's data. */
+export function AdminTools({ newFindings, onUploadFindings, leftoverFiles, onCleanup, onBackup, importPanel }: ToolsProps) {
+  const { t } = useLang();
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [cleanMsg, setCleanMsg] = useState('');
+  return (
+    <>
+      {importPanel}
+      {leftoverFiles > 0 && (
+        <section className="review-group">
+          <h2>{t('cleanupTitle')}</h2>
+          <p>{t('cleanupText', { n: String(leftoverFiles) })}</p>
+          <button
+            className="btn"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              setCleanMsg('');
+              try {
+                await onCleanup();
+              } catch (e) {
+                setCleanMsg(`${t('fileDeleteFailed')} ${String((e as Error)?.message ?? e)}`);
+              }
+              setBusy(false);
+            }}
+          >
+            🗑 {t('cleanupButton')}
+          </button>
+          {cleanMsg && <p className="error">{cleanMsg}</p>}
+        </section>
+      )}
+      {newFindings > 0 && (
+        <section className="review-group">
+          <h2>{t('researchUploadTitle')}</h2>
+          <p>{t('researchUploadText', { n: String(newFindings) })}</p>
+          <button
+            className="btn primary"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              setMsg('');
+              try {
+                await onUploadFindings();
+              } catch (e) {
+                setMsg(String(e));
+              }
+              setBusy(false);
+            }}
+          >
+            {t('researchUploadButton')}
+          </button>
+          {msg && <p className="muted" dir="ltr">{msg}</p>}
+        </section>
+      )}
+      <section className="review-group">
+        <h2>{t('backupTitle')}</h2>
+        <p>{t('backupText')}</p>
+        <button className="btn" onClick={onBackup}>{t('backupButton')}</button>
+      </section>
+    </>
+  );
+}
+
 interface ImportProps {
   counts: { people: number; unions: number; findings: number; decisions: number };
   onImport: (progress: (msg: string) => void) => Promise<void>;

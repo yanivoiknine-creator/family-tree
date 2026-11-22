@@ -1,8 +1,31 @@
-import type { FamilyData, Finding, Person, Union } from '../types';
+import type { FamilyData, Finding, Person, PersonDoc, Union } from '../types';
 
 /** Pure, immutable edits on the family data. The UI calls these, then persists the result. */
 
 export const newId = (prefix: string) => `${prefix}${crypto.randomUUID().slice(0, 8)}`;
+
+/** What kind of file an address or file name points to. */
+export function docKind(nameOrUrl: string, mime?: string): PersonDoc['kind'] {
+  const m = mime ?? nameOrUrl.match(/^data:([^;,]+)/)?.[1] ?? '';
+  if (m.startsWith('image/') || /\.(jpe?g|png|gif|webp|bmp|tiff?)(\?|$)/i.test(nameOrUrl)) return 'image';
+  if (m === 'application/pdf' || /\.pdf(\?|$)/i.test(nameOrUrl)) return 'pdf';
+  return 'file';
+}
+
+/** A research finding's document value → a document record. */
+export function toPersonDoc(v: Partial<PersonDoc> & { url: string }, sourceUrl?: string): PersonDoc {
+  const kind = v.kind ?? docKind(v.name ?? v.url);
+  const fallback = `document.${kind === 'pdf' ? 'pdf' : 'jpg'}`;
+  return {
+    id: v.id ?? newId('D'),
+    url: v.url,
+    name: v.name ?? (v.url.startsWith('data:') ? fallback : decodeURIComponent(v.url.split('/').pop()?.split('?')[0] || fallback)),
+    kind,
+    ...(v.title ? { title: v.title } : {}),
+    ...(v.sourceUrl ?? sourceUrl ? { sourceUrl: v.sourceUrl ?? sourceUrl } : {}),
+    addedAt: new Date().toISOString(),
+  };
+}
 
 export type RelativeKind = 'parent' | 'partner' | 'child' | 'sibling';
 
@@ -110,6 +133,8 @@ export function applyFinding(data: FamilyData, f: Finding): FamilyData {
     p.bio = p.bio ? `${p.bio}\n\n${String(value)}` : String(value);
   } else if (field === 'photo') {
     p.photo = String(value);
+  } else if (field === 'document') {
+    p.documents = [...(p.documents ?? []), toPersonDoc(value as Partial<PersonDoc> & { url: string }, f.sourceUrl)];
   } else if (field.includes('.')) {
     const [group, key] = field.split('.') as ['birth' | 'death' | 'burial', string];
     const ev = { ...(p[group] ?? {}) } as Record<string, unknown>;
