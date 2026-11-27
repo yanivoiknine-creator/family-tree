@@ -63,7 +63,7 @@ function fieldLabel(f: Finding, t: T): string {
   }
   if (field === 'fact') return t('facts');
   if (field === 'document') return t('document');
-  const known = ['bio', 'photo', 'firstName', 'lastName', 'firstNameHe', 'lastNameHe', 'middleName', 'middleNameHe', 'marriedName', 'marriedNameHe', 'sex'];
+  const known = ['bio', 'photo', 'firstName', 'lastName', 'firstNameHe', 'lastNameHe', 'middleName', 'middleNameHe', 'nickname', 'nicknameHe', 'marriedName', 'marriedNameHe', 'sex'];
   return known.includes(field) ? t(field as MsgKey) : field;
 }
 

@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import type { LifeEvent, Person, Union } from '../types';
 import type { RelativeKind } from '../lib/ops';
 import {
-  displayName, factLabel, formatDate, fullName, hebrewDate, isRtl, lifeSpan, nameParts, relationLabel, type MsgKey,
+  displayName, factLabel, formatDate, fullName, nicknameOf, hebrewDate, isRtl, lifeSpan, nameParts, relationLabel, type MsgKey,
 } from '../lib/i18n';
 import { useLang } from '../lib/LangContext';
 import { swipeHandlers } from '../lib/useMobile';
@@ -92,7 +92,8 @@ export function MobileSheet({
   const showDocs = canEdit || docs.length > 0;
   const chevron = isRtl(lang) ? 'back' : 'forward';
   const editLabel = t(editMode === 'suggest' ? 'suggestEdit' : 'edit');
-  const subline = [otherScript && otherScript !== shown ? otherScript : '', span].filter(Boolean).join(' · ');
+  const nick = nicknameOf(person, lang);
+  const subline = [nick ? `"${nick}"` : '', otherScript && otherScript !== shown ? otherScript : '', span].filter(Boolean).join(' · ');
 
   const swipe = side ? {} : swipeHandlers((dir) => {
     if (dir === 'up') setExpanded(true);

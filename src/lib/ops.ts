@@ -141,9 +141,9 @@ export function applyFinding(data: FamilyData, f: Finding): FamilyData {
     ev[key] = value;
     (p as unknown as Record<string, unknown>)[group] = ev;
     if (group === 'death' || group === 'burial') p.deceased = true;
-  } else if (field === 'middleName' || field === 'middleNameHe') {
-    // the middle name often sits inside the first name ("Denise Caroline"): move it out of there
-    const firstKey = field === 'middleName' ? 'firstName' : 'firstNameHe';
+  } else if (field === 'middleName' || field === 'middleNameHe' || field === 'nickname' || field === 'nicknameHe') {
+    // middle names and nicknames often sit inside the first name ("Denise Caroline", "Shlomo (Momi)"): move them out
+    const firstKey = field.endsWith('He') ? 'firstNameHe' : 'firstName';
     const middle = String(value).trim();
     p[field] = middle;
     p[firstKey] = withoutWords(p[firstKey] ?? '', middle);
@@ -162,9 +162,12 @@ export function withoutWords(first: string, words: string): string {
   const w = words.trim();
   if (!w) return first;
   const escaped = w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
-  const re = new RegExp(`(^|[\\s(])${escaped}(?=$|[\\s)])`, 'u');
+  const re = new RegExp(`(^|[\\s("'“”«])${escaped}(?=$|[\\s)"'“”»])`, 'iu');
   if (!re.test(first)) return first;
-  const out = first.replace(re, '$1').replace(/\(\s*\)/g, '').replace(/\s+/g, ' ').replace(/\s+\)/g, ')').trim();
+  const out = first.replace(re, '$1')
+    .replace(/\(\s*["'“”«»]*\s*\)/g, '') // "( )", '("")' left behind
+    .replace(/(^|\s)["“”«»]{2}(?=\s|$)/g, '$1')
+    .replace(/\s+/g, ' ').replace(/\s+\)/g, ')').trim();
   return out || first;
 }
 

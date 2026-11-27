@@ -1,7 +1,7 @@
 import type { DecisionRecord, FamilyData, Finding, LifeEvent, Person, PersonDoc, Union } from '../types';
 import type { FamilyGraph } from './graph';
 import { D_H, D_W, layoutEveryone } from './fullLayout';
-import { displayName, factLabel, formatDate, fullName, isRtl, lifeSpan, type Lang, type MsgKey } from './i18n';
+import { displayName, factLabel, formatDate, fullName, isRtl, lifeSpan, nicknameOf, type Lang, type MsgKey } from './i18n';
 import { makeZip, type ZipEntry } from './zip';
 
 /**
@@ -222,6 +222,7 @@ function gedcom(data: FamilyData, limited: (p: Person) => boolean): string {
     const given = (a?: string, b?: string) => [a, b].filter(Boolean).join(' ');
     line(1, 'NAME', `${given(p.firstName, p.middleName)} /${p.lastName}/`.trim());
     if (p.firstName) line(2, 'GIVN', given(p.firstName, p.middleName));
+    if (p.nickname || p.nicknameHe) line(2, 'NICK', p.nickname || p.nicknameHe);
     if (p.firstNameHe || p.lastNameHe) {
       line(1, 'NAME', `${given(p.firstNameHe, p.middleNameHe)} /${p.lastNameHe ?? ''}/`.trim());
       line(2, 'TYPE', 'aka');
@@ -394,7 +395,8 @@ export async function buildExport(
     const shownName = fullName(p, lang);
     const otherParts = lang === 'he' ? [p.firstName, p.marriedName || p.lastName] : [p.firstNameHe, p.marriedNameHe || p.lastNameHe];
     const other = otherParts.filter(Boolean).join(' ');
-    body += `<h1>${esc(shownName)}</h1><div class="sub">${esc([other !== shownName ? other : '', lim ? '' : lifeSpan(p, lang)].filter(Boolean).join(' · '))}</div>`;
+    const nick = nicknameOf(p, lang);
+    body += `<h1>${esc(shownName)}</h1><div class="sub">${esc([nick ? `"${nick}"` : '', other !== shownName ? other : '', lim ? '' : lifeSpan(p, lang)].filter(Boolean).join(' · '))}</div>`;
     if (lim) {
       body += `<p class="note">${esc(t('livingNotExported'))}</p>`;
     } else {
@@ -438,7 +440,8 @@ export async function buildExport(
     outData.people[p.id] = limited(p)
       ? {
         id: p.id, firstName: p.firstName, middleName: p.middleName, lastName: p.lastName, firstNameHe: p.firstNameHe, middleNameHe: p.middleNameHe,
-        lastNameHe: p.lastNameHe, marriedName: p.marriedName, marriedNameHe: p.marriedNameHe, sex: p.sex, deceased: false,
+        lastNameHe: p.lastNameHe, marriedName: p.marriedName, marriedNameHe: p.marriedNameHe, nickname: p.nickname, nicknameHe: p.nicknameHe,
+        sex: p.sex, deceased: false,
       }
       : p;
   }
@@ -451,7 +454,7 @@ export async function buildExport(
   if (opts.gedcom) add('family.ged', gedcom(outData, limited));
 
   if (opts.index) {
-    const list = people.map((p) => `<li data-n="${esc(`${fullName(p, lang)} ${p.firstName} ${p.middleName ?? ''} ${p.lastName} ${p.firstNameHe ?? ''} ${p.middleNameHe ?? ''} ${p.lastNameHe ?? ''}`.toLowerCase())}">`
+    const list = people.map((p) => `<li data-n="${esc(`${fullName(p, lang)} ${p.firstName} ${p.middleName ?? ''} ${p.lastName} ${p.firstNameHe ?? ''} ${p.middleNameHe ?? ''} ${p.lastNameHe ?? ''} ${p.nickname ?? ''} ${p.nicknameHe ?? ''}`.toLowerCase())}">`
       + `<a href="${href(PEOPLE)}/${href(folder.get(p.id)!)}/${href(DETAILS)}">${esc(displayName(p, lang))}</a> `
       + `<span class="yrs">${esc(limited(p) ? '' : lifeSpan(p, lang))}</span></li>`).join('');
     const body = `<h1>${esc(appTitle)}</h1><div class="sub">${esc(t('exportedOn', { date: today }))} · ${people.length}</div>`

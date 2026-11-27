@@ -19,6 +19,9 @@ export interface Person {
   /** Middle name(s): further given names after the first name (e.g. "Caroline" in "Denise Caroline") */
   middleName?: string;
   middleNameHe?: string;
+  /** What the family called them ("Momi", "Simi", "Alice") */
+  nickname?: string;
+  nicknameHe?: string;
   /** Surname after marriage (MyHeritage _MARNM); lastName stays the birth surname */
   marriedName?: string;
   marriedNameHe?: string;

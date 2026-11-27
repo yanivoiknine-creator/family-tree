@@ -332,6 +332,8 @@ const he = {
   exportShort: "ייצוא",
   middleName: "שם אמצעי (לועזית)",
   middleNameHe: "שם אמצעי (עברית)",
+  nickname: "כינוי (לועזית)",
+  nicknameHe: "כינוי (עברית)",
 };
 export type MsgKey = keyof typeof he;
 
@@ -658,6 +660,8 @@ const en: Record<MsgKey, string> = {
   exportShort: "Export",
   middleName: "Middle name (Latin)",
   middleNameHe: "Middle name (Hebrew)",
+  nickname: "Nickname (Latin)",
+  nicknameHe: "Nickname (Hebrew)",
 };
 
 const fr: Record<MsgKey, string> = {
@@ -983,6 +987,8 @@ const fr: Record<MsgKey, string> = {
   exportShort: "Exporter",
   middleName: "Deuxième prénom (latin)",
   middleNameHe: "Deuxième prénom (hébreu)",
+  nickname: "Surnom (latin)",
+  nicknameHe: "Surnom (hébreu)",
 };
 
 const DICTS: Record<Lang, Record<MsgKey, string>> = { he, en, fr };
@@ -1019,6 +1025,11 @@ export function middleOf(p: Person, lang: Lang): string {
   return (hebFirst ? p.middleNameHe || (p.firstNameHe ? '' : p.middleName) : p.middleName) || '';
 }
 
+/** The nickname in the language shown (falling back to the other script). */
+export function nicknameOf(p: Person, lang: Lang): string {
+  return (lang === 'he' ? p.nicknameHe || p.nickname : p.nickname || p.nicknameHe) || '';
+}
+
 /** First, middle and last name (cards keep the short displayName). */
 export function fullName(p: Person, lang: Lang): string {
   const { first, last } = nameParts(p, lang);
@@ -1027,7 +1038,7 @@ export function fullName(p: Person, lang: Lang): string {
 
 /** Every spelling of the name, for search. */
 export function searchText(p: Person): string {
-  return [p.firstName, p.middleName, p.lastName, p.firstNameHe, p.middleNameHe, p.lastNameHe, p.marriedName, p.marriedNameHe]
+  return [p.firstName, p.middleName, p.lastName, p.firstNameHe, p.middleNameHe, p.lastNameHe, p.marriedName, p.marriedNameHe, p.nickname, p.nicknameHe]
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
