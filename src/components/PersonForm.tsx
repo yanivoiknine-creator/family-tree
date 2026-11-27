@@ -243,6 +243,8 @@ export function PersonForm({ graph, initial, adding, onSave, onCancel, uploadPho
             {text('lastNameHe', 'rtl')}
             {text('firstName', 'ltr')}
             {text('lastName', 'ltr')}
+            {text('middleNameHe', 'rtl')}
+            {text('middleName', 'ltr')}
             {text('marriedNameHe', 'rtl')}
             {text('marriedName', 'ltr')}
           </div>

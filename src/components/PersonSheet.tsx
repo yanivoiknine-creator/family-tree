@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import type { LifeEvent, Person, Union } from '../types';
 import type { RelativeKind } from '../lib/ops';
 import {
-  displayName, factLabel, formatDate, hebrewDate, isRtl, lifeSpan, nameParts, relationLabel, type MsgKey,
+  displayName, factLabel, formatDate, fullName, hebrewDate, isRtl, lifeSpan, nameParts, relationLabel, type MsgKey,
 } from '../lib/i18n';
 import { useLang } from '../lib/LangContext';
 import { swipeHandlers } from '../lib/useMobile';
@@ -76,7 +76,7 @@ export function MobileSheet({
   useEffect(() => { setAddOpen(false); setMoreOpen(false); }, [person.id]);
 
   const rel = relations?.get(person.id);
-  const shown = displayName(person, lang);
+  const shown = fullName(person, lang);
   const { née } = nameParts(person, lang);
   const otherScript = lang === 'he'
     ? [person.firstName, person.marriedName || person.lastName].filter(Boolean).join(' ')

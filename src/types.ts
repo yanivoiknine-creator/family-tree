@@ -16,6 +16,9 @@ export interface Person {
   /** Hebrew spelling, filled in by family members */
   firstNameHe?: string;
   lastNameHe?: string;
+  /** Middle name(s): further given names after the first name (e.g. "Caroline" in "Denise Caroline") */
+  middleName?: string;
+  middleNameHe?: string;
   /** Surname after marriage (MyHeritage _MARNM); lastName stays the birth surname */
   marriedName?: string;
   marriedNameHe?: string;

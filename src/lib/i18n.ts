@@ -330,6 +330,8 @@ const he = {
   pickPerson: "בחר אדם בעץ כדי לראות את ההצעות שלו.",
   decidedEarlier: "החלטות קודמות",
   exportShort: "ייצוא",
+  middleName: "שם אמצעי (לועזית)",
+  middleNameHe: "שם אמצעי (עברית)",
 };
 export type MsgKey = keyof typeof he;
 
@@ -654,6 +656,8 @@ const en: Record<MsgKey, string> = {
   pickPerson: "Pick a person in the tree to see their suggestions.",
   decidedEarlier: "Earlier decisions",
   exportShort: "Export",
+  middleName: "Middle name (Latin)",
+  middleNameHe: "Middle name (Hebrew)",
 };
 
 const fr: Record<MsgKey, string> = {
@@ -977,6 +981,8 @@ const fr: Record<MsgKey, string> = {
   pickPerson: "Choisissez une personne dans l’arbre pour voir ses propositions.",
   decidedEarlier: "Décisions précédentes",
   exportShort: "Exporter",
+  middleName: "Deuxième prénom (latin)",
+  middleNameHe: "Deuxième prénom (hébreu)",
 };
 
 const DICTS: Record<Lang, Record<MsgKey, string>> = { he, en, fr };
@@ -1007,9 +1013,21 @@ export function displayName(p: Person, lang: Lang): string {
   return `${first} ${last}`.trim() || '?';
 }
 
+/** The middle name in the script that matches the shown first name. */
+export function middleOf(p: Person, lang: Lang): string {
+  const hebFirst = lang === 'he' ? Boolean(p.firstNameHe) : !p.firstName && Boolean(p.firstNameHe);
+  return (hebFirst ? p.middleNameHe || (p.firstNameHe ? '' : p.middleName) : p.middleName) || '';
+}
+
+/** First, middle and last name (cards keep the short displayName). */
+export function fullName(p: Person, lang: Lang): string {
+  const { first, last } = nameParts(p, lang);
+  return [first, middleOf(p, lang), last].filter(Boolean).join(' ') || '?';
+}
+
 /** Every spelling of the name, for search. */
 export function searchText(p: Person): string {
-  return [p.firstName, p.lastName, p.firstNameHe, p.lastNameHe, p.marriedName, p.marriedNameHe]
+  return [p.firstName, p.middleName, p.lastName, p.firstNameHe, p.middleNameHe, p.lastNameHe, p.marriedName, p.marriedNameHe]
     .filter(Boolean)
     .join(' ')
     .toLowerCase();

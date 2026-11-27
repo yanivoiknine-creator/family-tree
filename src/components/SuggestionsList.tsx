@@ -17,6 +17,7 @@ interface Props {
 
 const FIELD_LABEL: Record<string, MsgKey> = {
   firstName: 'firstName', lastName: 'lastName', firstNameHe: 'firstNameHe', lastNameHe: 'lastNameHe',
+  middleName: 'middleName', middleNameHe: 'middleNameHe',
   marriedName: 'marriedName', marriedNameHe: 'marriedNameHe', sex: 'sex', birth: 'born', death: 'died',
   burial: 'buried', deceased: 'deceased', photo: 'photo', bio: 'bio', facts: 'facts', documents: 'documents',
   partners: 'partners', children: 'children', kind: 'status', marriage: 'married', divorced: 'statusDivorced', divorce: 'divorce',

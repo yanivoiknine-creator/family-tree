@@ -141,10 +141,31 @@ export function applyFinding(data: FamilyData, f: Finding): FamilyData {
     ev[key] = value;
     (p as unknown as Record<string, unknown>)[group] = ev;
     if (group === 'death' || group === 'burial') p.deceased = true;
+  } else if (field === 'middleName' || field === 'middleNameHe') {
+    // the middle name often sits inside the first name ("Denise Caroline"): move it out of there
+    const firstKey = field === 'middleName' ? 'firstName' : 'firstNameHe';
+    const middle = String(value).trim();
+    p[field] = middle;
+    p[firstKey] = withoutWords(p[firstKey] ?? '', middle);
   } else {
     (p as unknown as Record<string, unknown>)[field] = value;
   }
   return upsertPerson(data, p);
+}
+
+/**
+ * A first name without the given words, when they appear in it as whole words
+ * (also in parentheses): "Raphael(Haim)" − "Haim" = "Raphael", "Aline Pauline (Alice)" − "Pauline" = "Aline (Alice)".
+ * Never leaves the first name empty.
+ */
+export function withoutWords(first: string, words: string): string {
+  const w = words.trim();
+  if (!w) return first;
+  const escaped = w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+  const re = new RegExp(`(^|[\\s(])${escaped}(?=$|[\\s)])`, 'u');
+  if (!re.test(first)) return first;
+  const out = first.replace(re, '$1').replace(/\(\s*\)/g, '').replace(/\s+/g, ' ').replace(/\s+\)/g, ')').trim();
+  return out || first;
 }
 
 export function blankPerson(): Person {
