@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { Person } from '../types';
 import type { FamilyGraph } from '../lib/graph';
 import type { RelationFinder } from '../lib/relation';
@@ -20,6 +21,8 @@ export interface Props {
   onClose: () => void;
   /** open the photos & documents gallery */
   onDocuments: (index?: number, adding?: boolean) => void;
+  /** admins: a "suggestions" tab with what waits for approval about this person */
+  review?: { count: number; content: ReactNode };
 }
 
 /** The selected person: a sheet over the tree on a phone, a panel beside the tree on a computer. */

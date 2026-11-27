@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Decision, FamilyData, Finding, Side } from '../types';
 import { FamilyGraph } from '../lib/graph';
 import type { RelationFinder } from '../lib/relation';
@@ -10,6 +10,11 @@ import { FilterChips } from './MobileChrome';
 import { FindingCard } from './ReviewPage';
 import { Avatar } from './Avatar';
 import { Icon } from './Icons';
+import { flag, gens, hashParams, oneOf, pick, recall, remember, setHash, showGens } from '../lib/urlState';
+import { ALL_GENS } from './MobileChrome';
+
+/** address keys of the research tree (cleared by App when it is not shown) */
+export const RTREE_KEYS = ['rp', 'rf', 'ts', 'tu', 'td', 'tw', 'tl', 'tg'];
 
 interface Props {
   data: FamilyData;
@@ -33,15 +38,39 @@ const CONF_ORDER = { high: 0, medium: 1, low: 2 };
  */
 export function ResearchTree({ data, graph, findings, decisions, resolveId, relations, viewerId, onDecideMany, onShowPerson }: Props) {
   const { lang, t } = useLang();
-  const [focusId, setFocusId] = useState(() => (graph.get(viewerId) ? viewerId : Object.keys(graph.people)[0] ?? ''));
+  // from the link, else as last left in this browser
+  const [start] = useState(() => {
+    const l = hashParams();
+    const m = recall<{ side: Side; up: number; down: number; onlyWith: boolean; leaves: boolean; ghosts: boolean }>('rtree');
+    const focus = l.get('rf') && graph.get(l.get('rf')!) ? l.get('rf')! : graph.get(viewerId) ? viewerId : Object.keys(graph.people)[0] ?? '';
+    return {
+      focus,
+      sel: l.get('rp') ?? focus,
+      side: pick(oneOf<Side>('all', 'father', 'mother')(l.get('ts')), m.side, 'all'),
+      up: pick(gens(ALL_GENS)(l.get('tu')), m.up, 4),
+      down: pick(gens(ALL_GENS)(l.get('td')), m.down, 2),
+      onlyWith: pick(flag(l.get('tw')), m.onlyWith, false),
+      leaves: pick(flag(l.get('tl')), m.leaves, true),
+      ghosts: pick(flag(l.get('tg')), m.ghosts, true),
+    };
+  });
+  const [focusId, setFocusId] = useState(start.focus);
   /** a person id, or "g:<finding id>" for a proposed person (their preview id changes on every rebuild) */
-  const [sel, setSel] = useState<string | undefined>(focusId);
-  const [side, setSide] = useState<Side>('all');
-  const [up, setUp] = useState(4);
-  const [down, setDown] = useState(2);
-  const [onlyWith, setOnlyWith] = useState(false);
-  const [showLeaves, setShowLeaves] = useState(true);
-  const [showGhosts, setShowGhosts] = useState(true);
+  const [sel, setSel] = useState<string | undefined>(start.sel);
+  const [side, setSide] = useState<Side>(start.side);
+  const [up, setUp] = useState(start.up);
+  const [down, setDown] = useState(start.down);
+  const [onlyWith, setOnlyWith] = useState(start.onlyWith);
+  const [showLeaves, setShowLeaves] = useState(start.leaves);
+  const [showGhosts, setShowGhosts] = useState(start.ghosts);
+  useEffect(() => {
+    remember('rtree', { side, up, down, onlyWith, leaves: showLeaves, ghosts: showGhosts });
+    setHash({
+      rp: sel ?? null, rf: focusId !== viewerId ? focusId : null, ts: side === 'all' ? null : side,
+      tu: up === 4 ? null : showGens(up, ALL_GENS), td: down === 2 ? null : showGens(down, ALL_GENS),
+      tw: onlyWith ? '1' : null, tl: showLeaves ? null : '0', tg: showGhosts ? null : '0',
+    });
+  }, [sel, focusId, side, up, down, onlyWith, showLeaves, showGhosts, viewerId]);
 
   // the tree with every pending "new person" added (in a copy), so proposed people appear in place
   const preview = useMemo(() => {

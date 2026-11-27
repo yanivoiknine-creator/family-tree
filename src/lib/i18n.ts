@@ -334,6 +334,10 @@ const he = {
   middleNameHe: "שם אמצעי (עברית)",
   nickname: "כינוי (לועזית)",
   nicknameHe: "כינוי (עברית)",
+  suggestionsTab: "הצעות",
+  noSuggestionsForPerson: "אין הצעות לאדם הזה.",
+  researchFindingsTitle: "ממצאי מחקר",
+  familySuggestionsTitle: "הצעות שינוי מבני משפחה",
 };
 export type MsgKey = keyof typeof he;
 
@@ -662,6 +666,10 @@ const en: Record<MsgKey, string> = {
   middleNameHe: "Middle name (Hebrew)",
   nickname: "Nickname (Latin)",
   nicknameHe: "Nickname (Hebrew)",
+  suggestionsTab: "Suggestions",
+  noSuggestionsForPerson: "No suggestions for this person.",
+  researchFindingsTitle: "Research findings",
+  familySuggestionsTitle: "Changes suggested by the family",
 };
 
 const fr: Record<MsgKey, string> = {
@@ -989,6 +997,10 @@ const fr: Record<MsgKey, string> = {
   middleNameHe: "Deuxième prénom (hébreu)",
   nickname: "Surnom (latin)",
   nicknameHe: "Surnom (hébreu)",
+  suggestionsTab: "Propositions",
+  noSuggestionsForPerson: "Aucune proposition pour cette personne.",
+  researchFindingsTitle: "Résultats de recherche",
+  familySuggestionsTitle: "Modifications proposées par la famille",
 };
 
 const DICTS: Record<Lang, Record<MsgKey, string>> = { he, en, fr };

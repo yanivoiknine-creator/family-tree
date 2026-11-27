@@ -8,6 +8,10 @@ import { displayName, formatDate, isRtl, relationLabel, type MsgKey } from '../l
 import { geocodeOne, type GeoPlace } from '../lib/places';
 import { placeCache } from '../data/placeCache';
 import { useLang } from '../lib/LangContext';
+import { flag, hashParams, listOf, pick, recall, remember, setHash } from '../lib/urlState';
+
+/** address keys of the map (cleared by App when the map is not shown) */
+export const MAP_KEYS = ['mk', 'mr'];
 
 type Kind = 'birth' | 'death' | 'burial' | 'marriage';
 const KINDS: Kind[] = ['birth', 'death', 'burial', 'marriage'];
@@ -60,8 +64,18 @@ export function MapView({ graph, relations, side, isAdmin, onOpenPerson }: Props
   const routesRef = useRef<L.LayerGroup>();
   const markerByKey = useRef(new Map<string, L.Marker>());
   const fittedFor = useRef('');
-  const [kinds, setKinds] = useState<Set<Kind>>(new Set(['birth', 'death']));
-  const [routes, setRoutes] = useState(false);
+  // layers: from the link, else as last left in this browser
+  const [start] = useState(() => {
+    const l = hashParams();
+    const m = recall<{ kinds: Kind[]; routes: boolean }>('map');
+    return { kinds: pick(listOf<Kind>(...KINDS)(l.get('mk')), m.kinds, ['birth', 'death'] as Kind[]), routes: pick(flag(l.get('mr')), m.routes, false) };
+  });
+  const [kinds, setKinds] = useState<Set<Kind>>(new Set(start.kinds));
+  const [routes, setRoutes] = useState(start.routes);
+  useEffect(() => {
+    remember('map', { kinds: [...kinds], routes });
+    setHash({ mk: [...kinds].join(',') || 'none', mr: routes ? '1' : null });
+  }, [kinds, routes]);
   const [cacheVersion, setCacheVersion] = useState(0);
   const [locating, setLocating] = useState(0);
 

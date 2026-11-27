@@ -21,14 +21,17 @@ import { TreeView } from './components/TreeView';
 import { PersonPanel } from './components/PersonPanel';
 import { PersonForm } from './components/PersonForm';
 import { SearchBox } from './components/SearchBox';
-import { ReviewPage } from './components/ReviewPage';
+import { REVIEW_KEYS, ReviewPage } from './components/ReviewPage';
 import { AdminPage, AdminTools, ImportPanel, type AdminTab } from './components/AdminPage';
 import { SuggestionsList } from './components/SuggestionsList';
 import { UsersAdmin } from './components/UsersAdmin';
 import { DocumentsGallery } from './components/Documents';
 import { ExportDialog } from './components/ExportDialog';
-import { ResearchTree } from './components/ResearchTree';
+import { RTREE_KEYS, ResearchTree } from './components/ResearchTree';
 import { ALL_GENS, AccountMenu, FilterChips, NavBar, type NavItem } from './components/MobileChrome';
+import { gens, hashParams, oneOf, pick, recall, remember, setHash, showGens } from './lib/urlState';
+import { PersonReview, personSuggestions } from './components/PersonReview';
+import { MAP_KEYS } from './components/MapView';
 import { useIsMobile } from './lib/useMobile';
 import { Icon } from './components/Icons';
 
@@ -69,11 +72,24 @@ export default function App({ cloud }: { cloud?: CloudSession }) {
   const [viewerId, setViewerId] = useState<string>(isGuest ? '' : cloud?.profile.person_id ?? prefs.get('viewer') ?? '');
   const [focusId, setFocusId] = useState('');
   const [selectedId, setSelectedId] = useState<string>();
-  const [side, setSide] = useState<Side>('all');
-  // guests start with the whole tree from afar, nobody highlighted, until they pick someone
-  const [up, setUp] = useState(isGuest ? ALL_GENS : 3);
-  const [down, setDown] = useState(isGuest ? ALL_GENS : 2);
-  const [overview, setOverview] = useState(isGuest);
+  // the tree filter: a link (#side=…&up=…) wins, then this browser's last choice, then the default
+  const [start] = useState(() => {
+    const link = hashParams();
+    const saved = isGuest ? {} : recall<{ side: Side; up: number; down: number }>('tree');
+    return {
+      side: pick(oneOf<Side>('all', 'father', 'mother')(link.get('side')), saved.side, 'all'),
+      // guests start with the whole tree from afar, nobody highlighted, until they pick someone
+      up: pick(gens(ALL_GENS)(link.get('up')), saved.up, isGuest ? ALL_GENS : 3),
+      down: pick(gens(ALL_GENS)(link.get('down')), saved.down, isGuest ? ALL_GENS : 2),
+      overview: isGuest && !link.get('p') && !link.get('f'),
+    };
+  });
+  const [side, setSide] = useState<Side>(start.side);
+  const [up, setUp] = useState(start.up);
+  const [down, setDown] = useState(start.down);
+  const [overview, setOverview] = useState(start.overview);
+  /** the address is read once the tree has loaded; only then is it kept in step */
+  const [urlReady, setUrlReady] = useState(false);
   const [view, setView] = useState<'tree' | 'admin' | 'map'>('tree');
   const mobile = useIsMobile();
   const [adminTab, setAdminTab] = useState<AdminTab>('suggestions');
@@ -120,20 +136,21 @@ export default function App({ cloud }: { cloud?: CloudSession }) {
         const viewer = isGuest ? '' : [own, viewerId].find((id) => id && d.people[id]) ?? firstId;
         setViewerId(viewer);
         const center = isGuest ? (home && d.people[home] ? home : firstId) : viewer;
-        const params = new URLSearchParams(location.hash.slice(1));
-        // a link like  #p=I500035  opens that person
+        // deep links: #p=<person shown> &f=<person in the middle> &view=map|admin &tab=<admin tab>
+        const params = hashParams();
         const linked = params.get('p');
-        if (linked && d.people[linked]) {
-          setFocusId(linked);
-          setSelectedId(linked);
-          setOverview(false);
-        } else setFocusId(center);
+        const linkedFocus = params.get('f');
+        const has = (id: string | null): id is string => Boolean(id && d.people[id]);
+        if (has(linked)) setSelectedId(linked);
+        setFocusId(has(linkedFocus) ? linkedFocus : has(linked) ? linked : center);
         const linkedView = params.get('view');
         if (linkedView === 'map' && !namesOnly) setView('map');
-        if ((linkedView === 'review' || linkedView === 'research-tree') && isAdmin) {
+        if (isAdmin && (linkedView === 'admin' || linkedView === 'review' || linkedView === 'research-tree')) {
+          const tab = oneOf<AdminTab>('suggestions', 'research', 'researchTree', 'users', 'import')(params.get('tab'));
           setView('admin');
-          setAdminTab(linkedView === 'review' ? 'research' : 'researchTree');
+          setAdminTab(linkedView === 'review' ? 'research' : linkedView === 'research-tree' ? 'researchTree' : tab ?? 'suggestions');
         }
+        setUrlReady(true);
         if (cloud && isAdmin) {
           const [f, dec, sug, prof] = await Promise.all([
             cloudStore.loadFindings(), cloudStore.loadDecisions(), cloudStore.listSuggestions(), cloudStore.listProfiles(),
@@ -172,6 +189,27 @@ export default function App({ cloud }: { cloud?: CloudSession }) {
   useEffect(() => {
     if (!cloud) try { localStorage.setItem(DECISIONS_KEY, JSON.stringify(decisions)); } catch { /* full */ }
   }, [decisions, cloud]);
+
+  // keep the address in step with the screen, so it can be shared as a link
+  useEffect(() => {
+    if (!urlReady) return;
+    const inAdmin = view === 'admin';
+    const clear = (keys: string[]) => Object.fromEntries(keys.map((k) => [k, null]));
+    setHash({
+      view: view === 'tree' ? null : view,
+      tab: inAdmin ? adminTab : null,
+      p: selectedId ?? null,
+      pt: selectedId ? undefined : null, // the person panel's own tab, written by the panel
+      f: !overview && focusId && focusId !== (selectedId ?? viewerId) ? focusId : null,
+      side: side === 'all' ? null : side,
+      up: up === 3 ? null : showGens(up, ALL_GENS),
+      down: down === 2 ? null : showGens(down, ALL_GENS),
+      ...(inAdmin && adminTab === 'research' ? {} : clear(REVIEW_KEYS)),
+      ...(inAdmin && adminTab === 'researchTree' ? {} : clear(RTREE_KEYS)),
+      ...(view === 'map' ? {} : clear(MAP_KEYS)),
+    });
+  }, [urlReady, view, adminTab, selectedId, focusId, overview, side, up, down, viewerId]);
+  useEffect(() => { if (!isGuest) remember('tree', { side, up, down }); }, [side, up, down]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const graph = useMemo(() => (data ? new FamilyGraph(data) : null), [data]);
   const relations = useMemo(() => (graph && viewerId ? new RelationFinder(graph, viewerId) : undefined), [graph, viewerId]);
@@ -220,7 +258,6 @@ export default function App({ cloud }: { cloud?: CloudSession }) {
     setFocusId(id);
     setSelectedId(id);
     setView('tree');
-    history.replaceState(null, '', `#p=${id}`);
   };
 
   const saveForm = (person: Person, unionId?: string, details?: UnionDetails) => {
@@ -481,8 +518,32 @@ export default function App({ cloud }: { cloud?: CloudSession }) {
       onSignOut={isGuest ? undefined : cloud?.signOut}
     />
   );
+  // admins: everything waiting about the open person (research findings and family members' suggestions)
+  const personReview = (() => {
+    if (!selected || !isAdmin) return undefined;
+    const id = selected.id;
+    const mine = findings.filter((f) => resolvePersonId(f.personId) === id || decisions[f.id]?.createdIds?.includes(id));
+    const sugs = personSuggestions(suggestions, id);
+    return {
+      count: mine.filter((f) => !decisions[f.id]).length + sugs.filter((s) => s.status === 'pending').length,
+      content: (
+        <PersonReview
+          graph={graph}
+          findings={mine}
+          decisions={simpleDecisions}
+          resolveId={resolvePersonId}
+          onDecide={decide}
+          suggestions={sugs}
+          profiles={profileMap}
+          onDecideSuggestion={decideSuggestion}
+          onShowPerson={openPerson}
+        />
+      ),
+    };
+  })();
   const personPanel = selected && (
     <PersonPanel
+      review={personReview}
       graph={graph}
       person={selected}
       relations={relations}

@@ -7,6 +7,10 @@ import { useLang } from '../lib/LangContext';
 import { Avatar } from './Avatar';
 import { docKind } from '../lib/ops';
 import { Icon } from './Icons';
+import { hashParams, listOf, oneOf, pick, recall, remember, setHash } from '../lib/urlState';
+
+/** address keys of the research list (cleared by App when the list is not shown) */
+export const REVIEW_KEYS = ['rtab', 'rq', 'rk', 'rc', 'rside', 'rb', 'rsort'];
 
 type State = 'pending' | 'approved' | 'rejected';
 type T = (key: MsgKey, vars?: Record<string, string>) => string;
@@ -172,13 +176,35 @@ const CONF_ORDER = { high: 0, medium: 1, low: 2 };
 
 export function ReviewPage({ graph, findings, decisions, resolveId, relations, onDecide, onDecideMany, onShowPerson, embedded }: Props) {
   const { lang, t } = useLang();
-  const [tab, setTab] = useState<State>('pending');
-  const [q, setQ] = useState('');
-  const [kinds, setKinds] = useState<Set<Kind>>(new Set());
-  const [confs, setConfs] = useState<Set<Finding['confidence']>>(new Set());
-  const [side, setSide] = useState<'all' | 'father' | 'mother'>('all');
-  const [batch, setBatch] = useState('all');
-  const [sort, setSort] = useState<Sort>('near');
+  // filters: from the link, else as last left in this browser
+  const [start] = useState(() => {
+    const l = hashParams();
+    const m = recall<{ tab: State; kinds: Kind[]; confs: Finding['confidence'][]; side: 'all' | 'father' | 'mother'; batch: string; sort: Sort }>('review');
+    return {
+      tab: pick(oneOf<State>('pending', 'approved', 'rejected')(l.get('rtab')), m.tab, 'pending'),
+      q: l.get('rq') ?? '',
+      kinds: pick(listOf<Kind>(...KINDS)(l.get('rk')), m.kinds, []),
+      confs: pick(listOf<Finding['confidence']>('high', 'medium', 'low')(l.get('rc')), m.confs, []),
+      side: pick(oneOf<'all' | 'father' | 'mother'>('all', 'father', 'mother')(l.get('rside')), m.side, 'all'),
+      batch: pick(l.get('rb') ?? undefined, m.batch, 'all'),
+      sort: pick(oneOf<Sort>('near', 'conf', 'name', 'count', 'order')(l.get('rsort')), m.sort, 'near'),
+    };
+  });
+  const [tab, setTab] = useState<State>(start.tab);
+  const [q, setQ] = useState(start.q);
+  const [kinds, setKinds] = useState<Set<Kind>>(new Set(start.kinds));
+  const [confs, setConfs] = useState<Set<Finding['confidence']>>(new Set(start.confs));
+  const [side, setSide] = useState<'all' | 'father' | 'mother'>(start.side);
+  const [batch, setBatch] = useState(start.batch);
+  const [sort, setSort] = useState<Sort>(start.sort);
+  useEffect(() => {
+    remember('review', { tab, kinds: [...kinds], confs: [...confs], side, batch, sort });
+    setHash({
+      rtab: tab === 'pending' ? null : tab, rq: q || null, rk: kinds.size ? [...kinds].join(',') : null,
+      rc: confs.size ? [...confs].join(',') : null, rside: side === 'all' ? null : side,
+      rb: batch === 'all' ? null : batch, rsort: sort === 'near' ? null : sort,
+    });
+  }, [tab, q, kinds, confs, side, batch, sort]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [focus, setFocus] = useState<string>();
 

@@ -591,3 +591,6 @@ select.lang { border: 1px solid var(--outline); border-radius: 8px; background: 
   .rt-panel { border-inline-start: 0; border-top: 1px solid var(--line); }
 }
 @media (prefers-reduced-motion: reduce) { .tree-content.animating, .link, .card { transition: none; } }
+.sheet-tabs .badge { margin-inline-start: 6px; }
+.sheet-review .finding-photo { max-width: 100%; }
+.sheet-review .info-card { padding-inline: 12px; }

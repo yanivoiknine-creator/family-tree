@@ -10,8 +10,9 @@ import { Avatar } from './Avatar';
 import { Thumb } from './Documents';
 import { Icon } from './Icons';
 import type { Props } from './PersonPanel';
+import { hashParams, oneOf, setHash } from '../lib/urlState';
 
-type Tab = 'details' | 'family' | 'docs';
+type Tab = 'details' | 'family' | 'docs' | 'review';
 
 interface SheetAction {
   label: string;
@@ -64,13 +65,16 @@ export function addRelativeItems(t: (k: MsgKey) => string, parentsCount: number,
  * - computer (`side`): a panel beside the tree, always expanded.
  */
 export function MobileSheet({
-  graph, person, relations, isAdmin, editMode, onOpen, onEdit, onEditUnion, onAdd, onDelete, onClose, onDocuments, variant = 'mobile',
+  graph, person, relations, isAdmin, editMode, onOpen, onEdit, onEditUnion, onAdd, onDelete, onClose, onDocuments, review, variant = 'mobile',
 }: Props & { variant?: 'mobile' | 'side' }) {
   const { lang, t } = useLang();
   const side = variant === 'side';
   const [expanded, setExpanded] = useState(false);
   const full = side || expanded;
-  const [tab, setTab] = useState<Tab>('details');
+  // the open tab is part of the address (#pt=family), so a link opens it
+  const [tab, setTab] = useState<Tab>(() => oneOf<Tab>('details', 'family', 'docs', 'review')(hashParams().get('pt')) ?? 'details');
+  useEffect(() => { setHash({ pt: tab === 'details' ? null : tab }); }, [tab]);
+  const shownTab: Tab = tab === 'review' && !review ? 'details' : tab;
   const [addOpen, setAddOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   useEffect(() => { setAddOpen(false); setMoreOpen(false); }, [person.id]);
@@ -230,9 +234,14 @@ export function MobileSheet({
               {t('docsShort')}{docs.length ? ` · ${docs.length}` : ''}
             </button>
           )}
+          {review && (
+            <button role="tab" className={shownTab === 'review' ? 'on' : ''} onClick={() => setTab('review')}>
+              {t('suggestionsTab')}{review.count ? <span className="badge">{review.count}</span> : null}
+            </button>
+          )}
         </div>
 
-        {tab === 'details' && (
+        {shownTab === 'details' && (
           <>
             <section className="info-card">
               {née && <div className="info-item"><Icon name="badge" /><div><b>{t('née')} {née}</b></div></div>}
@@ -250,7 +259,7 @@ export function MobileSheet({
             {person.bio && <section className="info-card"><h3>{t('bio')}</h3><p className="bio">{person.bio}</p></section>}
           </>
         )}
-        {tab === 'family' && (
+        {shownTab === 'family' && (
           <>
             {group('parents', parents)}
             {relationships.length > 0 && (
@@ -266,7 +275,8 @@ export function MobileSheet({
             {group('siblings', siblings)}
           </>
         )}
-        {tab === 'docs' && (
+        {shownTab === 'review' && review && <div className="sheet-review">{review.content}</div>}
+        {shownTab === 'docs' && (
           <div className="sheet-docs">
             {docs.map((d, i) => <Thumb key={d.id} doc={d} onClick={() => onDocuments(i)} />)}
             {canEdit && (
