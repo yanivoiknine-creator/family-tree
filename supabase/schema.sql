@@ -296,6 +296,44 @@ language sql stable security definer set search_path = public as $$
   end
 $$;
 
+-- What a guest (not signed in) and a not-yet-approved account see:
+-- everyone's names and family links; full details only of people who have died.
+-- `home` is the person the guests' tree is drawn around (the first admin's own card).
+create or replace function public.guest_tree() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'home', (select person_id from public.profiles
+              where role = 'admin' and person_id is not null order by created_at limit 1),
+    'people', coalesce((
+      select jsonb_object_agg(id,
+        case when coalesce((data ->> 'deceased')::boolean, false)
+          then data || jsonb_build_object('id', id)
+          else jsonb_strip_nulls(jsonb_build_object(
+            'id', id,
+            'firstName', coalesce(data ->> 'firstName', ''),
+            'lastName', coalesce(data ->> 'lastName', ''),
+            'firstNameHe', data ->> 'firstNameHe',
+            'lastNameHe', data ->> 'lastNameHe',
+            'marriedName', data ->> 'marriedName',
+            'marriedNameHe', data ->> 'marriedNameHe',
+            'sex', coalesce(data ->> 'sex', 'U'),
+            'deceased', false))
+        end)
+      from public.people), '{}'::jsonb),
+    'unions', coalesce((
+      select jsonb_object_agg(id, jsonb_strip_nulls(jsonb_build_object(
+        'id', id,
+        'partners', data -> 'partners',
+        'children', data -> 'children',
+        'kind', data -> 'kind',
+        'divorced', data -> 'divorced')))
+      from public.unions), '{}'::jsonb))
+$$;
+
+grant usage on schema public to anon;
+revoke execute on function public.guest_tree() from public;
+grant execute on function public.guest_tree() to anon, authenticated;
+
 revoke execute on function public.register_profile(text, text, text, text, text, text) from public, anon;
 revoke execute on function public.admin_link(uuid, text) from public, anon;
 revoke execute on function public.tree_names() from public, anon;

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { Side } from '../types';
 import { LANGS, type Lang } from '../lib/i18n';
 import { useLang } from '../lib/LangContext';
@@ -14,13 +14,15 @@ interface MenuProps {
   roleLabel?: string;
   badge: number;
   onMyCard?: () => void;
+  /** "export my data" (signed-in family members) */
+  onExport?: () => void;
   admin?: { label: string; onClick: () => void };
   onLang: (l: Lang) => void;
   onSignOut?: () => void;
 }
 
 /** The avatar at the end of the search bar and its account card. */
-export function AccountMenu({ avatarUrl, initials, name, email, roleLabel, badge, onMyCard, admin, onLang, onSignOut }: MenuProps) {
+export function AccountMenu({ avatarUrl, initials, name, email, roleLabel, badge, onMyCard, onExport, admin, onLang, onSignOut }: MenuProps) {
   const { lang, t } = useLang();
   const [open, setOpen] = useState(false);
   useEffect(() => {
@@ -64,6 +66,9 @@ export function AccountMenu({ avatarUrl, initials, name, email, roleLabel, badge
             {onMyCard && (
               <button className="m-menu-item" onClick={run(onMyCard)}><Icon name="badge" /><span>{t('myCard')}</span></button>
             )}
+            {onExport && (
+              <button className="m-menu-item" onClick={run(onExport)}><Icon name="download" /><span>{t('exportData')}</span></button>
+            )}
             {admin && (
               <button className="m-menu-item" onClick={run(admin.onClick)}>
                 <Icon name="manage" /><span>{admin.label}</span>
@@ -96,6 +101,9 @@ interface FilterProps {
   side: Side;
   up: number;
   down: number;
+  /** the generations that exist above / below the person in the middle (the steppers stop there) */
+  maxUp: number;
+  maxDown: number;
   /** the map has no generations */
   showDepth: boolean;
   onSide: (s: Side) => void;
@@ -103,11 +111,15 @@ interface FilterProps {
   onDown: (n: number) => void;
 }
 
+/** "Every generation" is stored as a large number, so it stays "all" when the person in the middle changes. */
+export const ALL_GENS = 99;
+
 /** Filter chips over the tree / map: back to me, which side of the family, and how many generations. */
-export function FilterChips(props: FilterProps & { onMe?: () => void }) {
+export function FilterChips(props: FilterProps & { onMe?: () => void; extra?: ReactNode }) {
   const { t } = useLang();
   const [open, setOpen] = useState(false);
-  const { side, up, down, showDepth, onSide, onMe } = props;
+  const { side, up, down, maxUp, maxDown, showDepth, onSide, onMe, extra } = props;
+  const shown = (v: number, max: number) => (v >= max ? t('allGens') : String(v));
   return (
     <div className="chips-bar" role="toolbar">
       {(['all', 'father', 'mother'] as Side[]).map((s) => (
@@ -119,7 +131,7 @@ export function FilterChips(props: FilterProps & { onMe?: () => void }) {
       {showDepth && (
         <button className="chip" onClick={() => setOpen(true)} aria-label={t('treeView')}>
           <Icon name="filter" size={18} />
-          <span dir="ltr">{up} ↑ · {down} ↓</span>
+          <span dir="ltr">{shown(up, maxUp)} ↑ · {shown(down, maxDown)} ↓</span>
         </button>
       )}
       {onMe && (
@@ -128,26 +140,31 @@ export function FilterChips(props: FilterProps & { onMe?: () => void }) {
           <span className="chip-label">{t('backToMe')}</span>
         </button>
       )}
+      {extra}
       {open && <FilterSheet {...props} onClose={() => setOpen(false)} />}
     </div>
   );
 }
 
+/** A generations stepper with no fixed ceiling: it stops at the last generation that exists, shown as "all". */
 function Stepper({ label, value, min, max, onChange }: { label: string; value: number; min: number; max: number; onChange: (n: number) => void }) {
   const { t } = useLang();
+  const top = Math.max(min, max);
+  const v = Math.min(value, top);
+  const all = value >= top;
   return (
     <div className="sheet-row">
       <span>{label}</span>
       <span className="stepper">
-        <button className="step" disabled={value <= min} onClick={() => onChange(value - 1)} aria-label={t('less')}><Icon name="minus" /></button>
-        <b>{value}</b>
-        <button className="step" disabled={value >= max} onClick={() => onChange(value + 1)} aria-label={t('more')}><Icon name="plus" /></button>
+        <button className="step" disabled={v <= min} onClick={() => onChange(v - 1)} aria-label={t('less')}><Icon name="minus" /></button>
+        <b>{all ? `${t('allGens')} · ${top}` : v}</b>
+        <button className="step" disabled={all} onClick={() => onChange(v + 1 >= top ? ALL_GENS : v + 1)} aria-label={t('more')}><Icon name="plus" /></button>
       </span>
     </div>
   );
 }
 
-function FilterSheet({ side, up, down, onSide, onUp, onDown, onClose }: FilterProps & { onClose: () => void }) {
+function FilterSheet({ side, up, down, maxUp, maxDown, onSide, onUp, onDown, onClose }: FilterProps & { onClose: () => void }) {
   const { t } = useLang();
   return (
     <div className="sheet-scrim" onClick={onClose}>
@@ -165,8 +182,11 @@ function FilterSheet({ side, up, down, onSide, onUp, onDown, onClose }: FilterPr
             </button>
           ))}
         </div>
-        <Stepper label={t('generationsUp')} value={up} min={1} max={6} onChange={onUp} />
-        <Stepper label={t('generationsDown')} value={down} min={0} max={4} onChange={onDown} />
+        <Stepper label={t('generationsUp')} value={up} min={1} max={maxUp} onChange={onUp} />
+        <Stepper label={t('generationsDown')} value={down} min={0} max={maxDown} onChange={onDown} />
+        <button className="btn tonal block" disabled={up >= maxUp && down >= maxDown} onClick={() => { onUp(ALL_GENS); onDown(ALL_GENS); }}>
+          {t('allGenerations')}
+        </button>
         <button className="btn primary block" onClick={onClose}>{t('show')}</button>
       </section>
     </div>

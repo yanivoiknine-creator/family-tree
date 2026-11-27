@@ -22,9 +22,18 @@ interface Props {
   onSelect: (id: string) => void;
   /** the person panel covers part of the screen; keep the tree in the visible part */
   panelOpen: boolean;
+  /** the whole tree from afar, nobody highlighted (guests) */
+  overview?: boolean;
+  /** research tree: pending suggestions per person, proposed (not yet approved) people, ends of the tree, faded cards */
+  badges?: Record<string, number>;
+  ghosts?: Set<string>;
+  leaves?: Set<string>;
+  dimmed?: Set<string>;
 }
 
-export function TreeView({ graph, relations, focusId, viewerId, selectedId, side, up, down, onSelect, panelOpen }: Props) {
+export function TreeView({
+  graph, relations, focusId, viewerId, selectedId, side, up, down, onSelect, panelOpen, overview, badges, ghosts, leaves, dimmed,
+}: Props) {
   const { lang, t } = useLang();
   const rtl = isRtl(lang);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -38,7 +47,7 @@ export function TreeView({ graph, relations, focusId, viewerId, selectedId, side
   useEffect(() => {
     const el = wrapRef.current!;
     const z = zoom<HTMLDivElement, unknown>()
-      .scaleExtent([0.25, 2])
+      .scaleExtent([0.04, 2])
       .on('zoom', (e) => setTransform(e.transform));
     zoomRef.current = z;
     select(el).call(z).on('dblclick.zoom', null);
@@ -67,8 +76,10 @@ export function TreeView({ graph, relations, focusId, viewerId, selectedId, side
     let y1 = H;
     if (panelOpen && mobile) y1 = H * 0.42;
     const w = x1 - x0, h = y1 - y0;
-    // on a phone keep cards readable (the tree can be dragged) rather than shrinking it to fit
-    const minScale = mobile ? 0.8 : 0.6;
+    // on a phone keep cards readable (the tree can be dragged) rather than shrinking it to fit;
+    // a very tall tree (many generations) or the guests' overview is shown whole
+    const rows = new Set(layout.nodes.map((n) => n.y)).size;
+    const minScale = overview || rows > 8 ? 0.04 : mobile ? 0.8 : 0.6;
     const k = Math.min(1, (w - pad * 2) / (maxX - minX), (h - pad * 2) / (maxY - minY));
     let tf;
     if (k >= minScale) {
@@ -82,13 +93,33 @@ export function TreeView({ graph, relations, focusId, viewerId, selectedId, side
     animTimer.current = window.setTimeout(() => setAnimating(false), 500);
     select(el).call(zoomRef.current.transform, tf);
   };
-  useEffect(fit, [layout, panelOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(fit, [layout, panelOpen, overview]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // fit again when the tree's area changes size (window resized, a panel finished laying out)
+  const fitRef = useRef(fit);
+  fitRef.current = fit;
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    let last = `${el.clientWidth}x${el.clientHeight}`;
+    let frame = 0;
+    const ro = new ResizeObserver(() => {
+      const size = `${el.clientWidth}x${el.clientHeight}`;
+      if (size === last) return;
+      last = size;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => fitRef.current());
+    });
+    ro.observe(el);
+    return () => { ro.disconnect(); cancelAnimationFrame(frame); };
+  }, []);
 
   const zoomBy = (f: number) => wrapRef.current && zoomRef.current && select(wrapRef.current).call(zoomRef.current.scaleBy, f);
 
   return (
-    <div className="tree-wrap" ref={wrapRef}>
-      <div className={`tree-content${animating ? ' animating' : ''}`} style={{ transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.k})` }}>
+    <div className={`tree-wrap${overview ? ' overview' : ''}`} ref={wrapRef}>
+      {/* far away the cards keep only a large name */}
+      <div className={`tree-content${animating ? ' animating' : ''}${transform.k < 0.45 ? ' far' : ''}`} style={{ transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.k})` }}>
         <svg className="tree-links" width="1" height="1">
           {layout.links.map((l) => (
             <polyline
@@ -107,7 +138,12 @@ export function TreeView({ graph, relations, focusId, viewerId, selectedId, side
           if (p.deceased) classes.push('deceased');
           if (n.id === selectedId) classes.push('selected');
           if (n.id === viewerId) classes.push('is-viewer');
-          const branch = graph.branchSize(n.id);
+          const ghost = ghosts?.has(n.id);
+          if (ghost) classes.push('ghost');
+          if (leaves?.has(n.id)) classes.push('leaf');
+          if (dimmed?.has(n.id)) classes.push('dim');
+          const branch = ghost || badges ? 0 : graph.branchSize(n.id);
+          const pending = badges?.[n.id] ?? 0;
           return (
             <button
               key={n.key}
@@ -120,8 +156,11 @@ export function TreeView({ graph, relations, focusId, viewerId, selectedId, side
               <span className="card-text">
                 <span className="card-name">{displayName(p, lang)}</span>
                 <span className="card-years">{lifeSpan(p, lang)}</span>
-                {label && <span className={`card-rel${rel?.kind.k === 'self' ? ' me' : ''}`}>{label}</span>}
+                {ghost ? <span className="card-rel ghost-tag">{t('ghostTag')}</span>
+                  : label && <span className={`card-rel${rel?.kind.k === 'self' ? ' me' : ''}`}>{label}</span>}
               </span>
+              {pending > 0 && <span className="card-badge" aria-label={t('pendingForPerson', { n: String(pending) })}>{pending}</span>}
+              {leaves?.has(n.id) && <span className="leaf-tag">{t('leafTag')}</span>}
               {branch > 0 && (
                 <span className="card-branch" title={t('branchCount', { n: String(branch) })} aria-label={t('branchCount', { n: String(branch) })}>
                   {branch}

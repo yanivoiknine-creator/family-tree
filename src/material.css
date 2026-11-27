@@ -501,3 +501,93 @@ select.lang { border: 1px solid var(--outline); border-radius: 8px; background: 
 }
 @media (max-width: 720px) { .me-chip .chip-label { display: none; } .me-chip { padding: 0 8px; } }
 @media (max-width: 720px) { .chips-bar { gap: 6px; padding: 8px 12px; } .chip { padding: 0 10px; } .chip .ms { font-size: 16px; } }
+
+/* ---------- 2026-11: whole tree, guests, export, research tools ---------- */
+
+/* far away (many generations / the guests' overview) a card keeps only a large name */
+.tree-content.far .card { justify-content: center; padding: 6px 10px; }
+.tree-content.far .card .avatar,
+.tree-content.far .card-years,
+.tree-content.far .card-rel,
+.tree-content.far .card-branch { display: none; }
+.tree-content.far .card-name { font-size: 22px; line-height: 1.15; text-align: center; -webkit-line-clamp: 3; }
+/* guests: nobody is highlighted until they pick someone */
+.tree-wrap.overview .card.role-focus { background: var(--surface); box-shadow: var(--shadow); }
+
+/* research tree cards */
+.card-badge {
+  position: absolute; top: -9px; inset-inline-end: -9px; min-width: 24px; height: 24px; padding: 0 7px;
+  border-radius: 999px; background: var(--gold); color: #fff; font-size: 13px; font-weight: 700;
+  display: grid; place-items: center; box-shadow: 0 0 0 2px var(--surface); font-variant-numeric: tabular-nums;
+}
+.card.ghost, .card.ghost.sex-M, .card.ghost.sex-F {
+  border: 1.5px dashed var(--gold); border-inline-start: 4px dashed var(--gold);
+  background: color-mix(in srgb, var(--gold) 8%, var(--surface)); box-shadow: none;
+}
+.card.ghost .avatar { background: transparent; border: 2px dashed var(--gold); color: var(--gold); }
+.card-rel.ghost-tag { background: color-mix(in srgb, var(--gold) 18%, transparent); color: var(--gold); font-weight: 600; }
+.card.dim { opacity: 0.35; }
+.card.dim:hover { opacity: 1; }
+.leaf-tag {
+  position: absolute; top: -10px; inset-inline-start: 12px; padding: 0 8px; line-height: 18px; border-radius: 999px;
+  background: var(--surface); border: 1px dashed var(--gold); color: var(--gold); font-size: 11px; font-weight: 600;
+}
+.tree-content.far .card-badge { min-width: 40px; height: 40px; font-size: 20px; top: -16px; inset-inline-end: -16px; }
+.tree-content.far .leaf-tag { display: none; }
+
+/* sign-in: continue as a guest */
+.auth-or { display: flex; align-items: center; gap: 10px; color: var(--ink-2); font-size: 13px; margin: 16px 0 4px; }
+.auth-or::before, .auth-or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.guest-btn { min-width: 204px; justify-content: center; margin-top: 8px; }
+.small-print { font-size: 13px; margin: 10px 0 0; }
+
+/* export */
+.export-modal { width: min(560px, 100%); }
+.export-check { display: flex; align-items: flex-start; gap: 10px; padding: 4px 0; }
+.export-check input { width: 18px; height: 18px; margin-top: 2px; accent-color: var(--accent); flex: none; }
+.export-check small { display: block; font-size: 12.5px; }
+.segmented.wrap { display: flex; flex-wrap: wrap; border-radius: 12px; }
+.segmented.wrap .seg { flex: 1 1 auto; min-height: 38px; }
+
+/* research list: filters, bulk actions, keyboard focus */
+.review-filters { display: flex; flex-direction: column; gap: 8px; margin: 0 0 12px; }
+.filter-search { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 0 12px; color: var(--ink-2); }
+.filter-search input { flex: 1; border: 0; background: transparent; padding: 9px 0; font: inherit; color: var(--ink); outline: none; min-width: 0; }
+.filter-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.filter-row select { height: 32px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; font-size: 14px; padding: 0 8px; }
+.bulk-bar {
+  position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  padding: 8px 12px; margin-bottom: 12px; border-radius: 12px; background: var(--accent-soft); color: var(--on-accent-soft); font-size: 14px;
+}
+.bulk-bar .check input { width: 18px; height: 18px; accent-color: var(--accent); }
+.keys-hint { margin-inline-start: auto; font-size: 12px; opacity: 0.8; }
+.finding.focused { background: color-mix(in srgb, var(--gold) 7%, transparent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--gold) 45%, transparent); border-radius: 10px; padding-inline: 10px; }
+.finding-check { width: 18px; height: 18px; accent-color: var(--accent); margin: 0; }
+.finding-batch { font-size: 11px; color: var(--ink-2); border: 1px solid var(--line); border-radius: 6px; padding: 0 6px; }
+.stamp { font-size: 13px; font-weight: 600; align-self: center; }
+.stamp.approved { color: var(--ok); }
+.stamp.rejected { color: var(--danger); }
+@media (max-width: 720px) { .keys-hint { display: none; } }
+
+/* admin tab that uses the whole area (research tree) */
+.admin-wide { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--bg); }
+.admin-wide-nav { padding: 8px 16px 0; }
+.admin-wide-body { position: relative; flex: 1; min-height: 0; }
+.research-tree { position: absolute; inset: 0; display: flex; flex-direction: column; }
+.research-tree .chips-bar { flex-wrap: wrap; overflow: visible; }
+.chip-count { align-self: center; font-size: 13px; color: var(--ink-2); margin-inline-start: auto; }
+.next-chip { border-color: var(--gold); color: var(--gold); }
+.rt-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 380px; }
+.rt-canvas { position: relative; min-width: 0; }
+.rt-panel { overflow: auto; background: var(--surface); border-inline-start: 1px solid var(--line); padding: 14px 16px 30px; }
+.rt-head { display: flex; align-items: center; gap: 12px; }
+.rt-head > div { flex: 1; min-width: 0; }
+.rt-head h2 { margin: 0; font-size: 18px; font-weight: 500; }
+.rt-count { margin: 10px 0; }
+.rt-decided summary { cursor: pointer; color: var(--ink-2); margin: 14px 0 4px; }
+.finding.decided { opacity: 0.75; }
+@media (max-width: 900px) {
+  .rt-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: 55% 45%; }
+  .rt-panel { border-inline-start: 0; border-top: 1px solid var(--line); }
+}
+@media (prefers-reduced-motion: reduce) { .tree-content.animating, .link, .card { transition: none; } }

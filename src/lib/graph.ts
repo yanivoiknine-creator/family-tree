@@ -128,6 +128,34 @@ export class FamilyGraph {
   }
   private branchCache = new Map<string, number>();
 
+  /** How many generations of ancestors exist above `id` (0 = no parents). `side` limits the first step. */
+  depthUp(id: string, side: 'all' | 'father' | 'mother' = 'all'): number {
+    const first = side === 'all' ? this.parents(id) : [side === 'father' ? this.father(id) : this.mother(id)].filter(Boolean) as Person[];
+    let best = 0;
+    for (const p of first) best = Math.max(best, 1 + this.longest(p.id, 'up', new Set([id])));
+    return best;
+  }
+
+  /** How many generations of descendants exist below `id` (0 = no children). */
+  depthDown(id: string): number {
+    return this.longest(id, 'down', new Set());
+  }
+
+  private longest(id: string, dir: 'up' | 'down', seen: Set<string>): number {
+    if (seen.has(id)) return 0; // a loop in bad data
+    const cache = dir === 'up' ? this.upCache : this.downCache;
+    const hit = cache.get(id);
+    if (hit !== undefined) return hit;
+    seen.add(id);
+    let best = 0;
+    for (const p of dir === 'up' ? this.parents(id) : this.children(id)) best = Math.max(best, 1 + this.longest(p.id, dir, seen));
+    seen.delete(id);
+    cache.set(id, best);
+    return best;
+  }
+  private upCache = new Map<string, number>();
+  private downCache = new Map<string, number>();
+
   /** All ancestors of `id` (not including id). */
   ancestors(id: string): Set<string> {
     const out = new Set<string>();

@@ -16,7 +16,8 @@ export const supabase: SupabaseClient | null = CLOUD
     })
   : null;
 
-export type Role = 'pending' | 'member' | 'admin';
+/** guest = not signed in, view only (never stored in the database) */
+export type Role = 'guest' | 'pending' | 'member' | 'admin';
 
 export interface Profile {
   user_id: string;

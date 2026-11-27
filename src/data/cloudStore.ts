@@ -110,6 +110,17 @@ export class CloudStore {
     return data;
   }
 
+  /**
+   * Guests (and accounts waiting for approval): names and links of everyone, details of people who died.
+   * `home` is the person the guests' tree is drawn around.
+   */
+  async loadGuest(): Promise<{ data: FamilyData; home?: string }> {
+    const r = must(await sb().rpc('guest_tree')) as (FamilyData & { home?: string | null }) | null;
+    const data: FamilyData = { people: r?.people ?? {}, unions: r?.unions ?? {} };
+    this.snapshot = data;
+    return { data, home: r?.home ?? undefined };
+  }
+
   /** Admins only: write what changed since the last load/save. */
   async save(next: FamilyData): Promise<void> {
     const change = diffData(this.snapshot, next);

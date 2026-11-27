@@ -22,6 +22,8 @@ export function AuthGate({ children }: { children: (cloud: CloudSession) => Reac
   const [profile, setProfile] = useState<Profile | null | undefined>(undefined);
   const [registering, setRegistering] = useState(false);
   const [error, setError] = useState('');
+  // "continue as guest": view only, no account; remembered until the visitor chooses to sign in
+  const [guest, setGuest] = useState(() => prefs.get('guest') === '1');
   const t = useMemo(() => (key: Parameters<typeof translate>[1], vars?: Record<string, string>) => translate(lang, key, vars), [lang]);
 
   useEffect(() => {
@@ -77,8 +79,15 @@ export function AuthGate({ children }: { children: (cloud: CloudSession) => Reac
   let content: ReactNode;
   if (session === undefined || (session && profile === undefined)) {
     content = <div className="loading">…</div>;
+  } else if (!session && guest) {
+    content = children({
+      profile: GUEST_PROFILE,
+      signOut: () => { prefs.set('guest', null); setGuest(false); },
+      refreshProfile: async () => undefined,
+      openRegister: () => undefined,
+    });
   } else if (!session) {
-    content = <SignIn langSelect={langSelect} />;
+    content = <SignIn langSelect={langSelect} onGuest={() => { prefs.set('guest', '1'); setGuest(true); }} />;
   } else if (!profile) {
     content = (
       <Screen langSelect={langSelect}>
@@ -105,6 +114,11 @@ export function AuthGate({ children }: { children: (cloud: CloudSession) => Reac
   return <LangContext.Provider value={{ lang, t }}>{content}</LangContext.Provider>;
 }
 
+const GUEST_PROFILE: Profile = {
+  user_id: 'guest', email: null, display_name: null, avatar_url: null, role: 'guest',
+  person_id: null, claim: null, attempts: 0, registered_at: null, created_at: '',
+};
+
 function Screen({ langSelect, children }: { langSelect: ReactNode; children: ReactNode }) {
   const { t } = useLang();
   return (
@@ -119,7 +133,7 @@ function Screen({ langSelect, children }: { langSelect: ReactNode; children: Rea
   );
 }
 
-function SignIn({ langSelect }: { langSelect: ReactNode }) {
+function SignIn({ langSelect, onGuest }: { langSelect: ReactNode; onGuest: () => void }) {
   const { t } = useLang();
   const [busy, setBusy] = useState(false);
   const signIn = async () => {
@@ -146,6 +160,9 @@ function SignIn({ langSelect }: { langSelect: ReactNode }) {
         </svg>
         {t('signInGoogle')}
       </button>
+      <div className="auth-or">{t('or')}</div>
+      <button className="btn tonal guest-btn" onClick={onGuest}>{t('guestContinue')}</button>
+      <p className="muted small-print">{t('guestHint')}</p>
     </Screen>
   );
 }

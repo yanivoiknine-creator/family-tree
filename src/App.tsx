@@ -26,7 +26,9 @@ import { AdminPage, AdminTools, ImportPanel, type AdminTab } from './components/
 import { SuggestionsList } from './components/SuggestionsList';
 import { UsersAdmin } from './components/UsersAdmin';
 import { DocumentsGallery } from './components/Documents';
-import { AccountMenu, FilterChips, NavBar, type NavItem } from './components/MobileChrome';
+import { ExportDialog } from './components/ExportDialog';
+import { ResearchTree } from './components/ResearchTree';
+import { ALL_GENS, AccountMenu, FilterChips, NavBar, type NavItem } from './components/MobileChrome';
 import { useIsMobile } from './lib/useMobile';
 import { Icon } from './components/Icons';
 
@@ -57,18 +59,21 @@ export default function App({ cloud }: { cloud?: CloudSession }) {
   const role: Role | undefined = cloud?.profile.role;
   const [devAdmin, setDevAdmin] = useState(prefs.get('admin') !== 'false');
   const isAdmin = cloud ? role === 'admin' : devAdmin;
+  const isGuest = role === 'guest';
   const namesOnly = role === 'pending';
-  const editMode = namesOnly ? 'none' : cloud && !isAdmin ? 'suggest' : 'edit';
+  const editMode = namesOnly || isGuest ? 'none' : cloud && !isAdmin ? 'suggest' : 'edit';
 
   const [data, setData] = useState<FamilyData | null>(null);
   const [loadError, setLoadError] = useState('');
   const [lang, setLang] = useState<Lang>(initialLang);
-  const [viewerId, setViewerId] = useState<string>(cloud?.profile.person_id ?? prefs.get('viewer') ?? '');
+  const [viewerId, setViewerId] = useState<string>(isGuest ? '' : cloud?.profile.person_id ?? prefs.get('viewer') ?? '');
   const [focusId, setFocusId] = useState('');
   const [selectedId, setSelectedId] = useState<string>();
   const [side, setSide] = useState<Side>('all');
-  const [up, setUp] = useState(3);
-  const [down, setDown] = useState(2);
+  // guests start with the whole tree from afar, nobody highlighted, until they pick someone
+  const [up, setUp] = useState(isGuest ? ALL_GENS : 3);
+  const [down, setDown] = useState(isGuest ? ALL_GENS : 2);
+  const [overview, setOverview] = useState(isGuest);
   const [view, setView] = useState<'tree' | 'admin' | 'map'>('tree');
   const mobile = useIsMobile();
   const [adminTab, setAdminTab] = useState<AdminTab>('suggestions');
@@ -80,6 +85,9 @@ export default function App({ cloud }: { cloud?: CloudSession }) {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [toast, setToast] = useState('');
+  const [exporting, setExporting] = useState(false);
+  // every signed-in family member may export (not guests, not accounts waiting for approval)
+  const canExport = !isGuest && !namesOnly;
   const toastTimer = useRef<number>();
 
   const t = useMemo(() => (key: Parameters<typeof translate>[1], vars?: Record<string, string>) => translate(lang, key, vars), [lang]);
@@ -95,24 +103,36 @@ export default function App({ cloud }: { cloud?: CloudSession }) {
     let cancelled = false;
     (async () => {
       try {
-        const d = cloud ? await cloudStore.load(namesOnly) : await localStore.load();
+        let d: FamilyData;
+        let home: string | undefined;
+        if (!cloud) d = await localStore.load();
+        else if (isGuest || namesOnly) {
+          // waiting accounts see what guests see (older databases without guest_tree: names only)
+          const g = await cloudStore.loadGuest().catch((e) => (isGuest ? Promise.reject(e) : null));
+          d = g ? g.data : await cloudStore.load(true);
+          home = g?.home;
+        } else d = await cloudStore.load(false);
         if (cancelled) return;
         setData(d);
         const own = cloud?.profile.person_id;
-        const viewer = [own, viewerId].find((id) => id && d.people[id]) ?? Object.keys(d.people)[0] ?? '';
+        const firstId = Object.keys(d.people)[0] ?? '';
+        // a guest has no card of their own: the tree is drawn around the family's home person
+        const viewer = isGuest ? '' : [own, viewerId].find((id) => id && d.people[id]) ?? firstId;
         setViewerId(viewer);
+        const center = isGuest ? (home && d.people[home] ? home : firstId) : viewer;
         const params = new URLSearchParams(location.hash.slice(1));
         // a link like  #p=I500035  opens that person
         const linked = params.get('p');
         if (linked && d.people[linked]) {
           setFocusId(linked);
           setSelectedId(linked);
-        } else setFocusId(viewer);
+          setOverview(false);
+        } else setFocusId(center);
         const linkedView = params.get('view');
         if (linkedView === 'map' && !namesOnly) setView('map');
-        if (linkedView === 'review' && isAdmin) {
+        if ((linkedView === 'review' || linkedView === 'research-tree') && isAdmin) {
           setView('admin');
-          setAdminTab('research');
+          setAdminTab(linkedView === 'review' ? 'research' : 'researchTree');
         }
         if (cloud && isAdmin) {
           const [f, dec, sug, prof] = await Promise.all([
@@ -147,7 +167,7 @@ export default function App({ cloud }: { cloud?: CloudSession }) {
     prefs.set('lang', lang);
   }, [lang]);
 
-  useEffect(() => prefs.set('viewer', viewerId || null), [viewerId]);
+  useEffect(() => { if (!isGuest) prefs.set('viewer', viewerId || null); }, [viewerId]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (!cloud) prefs.set('admin', String(devAdmin)); }, [devAdmin, cloud]);
   useEffect(() => {
     if (!cloud) try { localStorage.setItem(DECISIONS_KEY, JSON.stringify(decisions)); } catch { /* full */ }
@@ -196,6 +216,7 @@ export default function App({ cloud }: { cloud?: CloudSession }) {
   };
 
   const openPerson = (id: string) => {
+    setOverview(false);
     setFocusId(id);
     setSelectedId(id);
     setView('tree');
@@ -238,48 +259,89 @@ export default function App({ cloud }: { cloud?: CloudSession }) {
     return rec?.d === 'approved' ? rec.createdIds?.[0] : undefined;
   };
 
-  const decide = (finding: Finding, d: Decision | undefined) => {
-    const prev = decisions[finding.id];
-    if (prev?.d === 'approved' && d !== 'approved') {
-      const dependents = findings.some((x) => x.personId === `new:${finding.id}` && decisions[x.id]?.d === 'approved');
-      if (dependents) return alert(t('undoDependentsFirst'));
-    }
-    let f = finding;
-    if (d === 'approved' && (finding.field === 'photo' || finding.field === 'document') && !findingFileUrl(finding)) {
-      return alert(t('fileDeleted'));
-    }
-    if (d === 'approved') {
-      const pid = resolvePersonId(finding.personId);
-      if (!pid) return alert(t('approveFirst', { name: finding.personName ?? '?' }));
-      f = { ...finding, personId: pid };
-    }
+  /**
+   * Approve, reject or undo several findings at once (one is just a list of one).
+   * Works on a local copy of the tree and the decisions, so each step sees the previous ones:
+   * a new person approved earlier in the list can receive the findings that point at them.
+   * Returns the ids of people the approvals created.
+   */
+  const decideMany = (list: Finding[], d: Decision | undefined): string[] => {
     let next = data;
-    // undo a previous approval first
-    if (prev?.d === 'approved') {
-      if (prev.personBefore) next = upsertPerson(next, prev.personBefore);
-      for (const id of prev.createdIds ?? []) next = deletePerson(next, id);
-    }
     const rec: Record<string, DecisionRecord> = { ...decisions };
-    delete rec[f.id];
-    if (d === 'approved') {
-      try {
-        const before = next.people[f.personId];
-        const applied = applyFinding(next, f);
-        const createdIds = Object.keys(applied.people).filter((id) => !next.people[id]);
-        rec[f.id] = { d, personBefore: f.type === 'field' ? before : undefined, createdIds };
-        next = applied;
-      } catch {
-        alert(t('applyFailed'));
-        return;
+    const changed: Finding[] = [];
+    const created: string[] = [];
+    const problems: string[] = [];
+    const resolve = (pid: string) => {
+      if (!pid.startsWith('new:')) return pid;
+      const r = rec[pid.slice(4)];
+      return r?.d === 'approved' ? r.createdIds?.[0] : undefined;
+    };
+    const step = (finding: Finding): 'done' | 'later' | 'skip' => {
+      const prev = rec[finding.id];
+      if (prev?.d === d) return 'skip';
+      if (prev?.d === 'approved' && d !== 'approved') {
+        const dependents = findings.some((x) => x.personId === `new:${finding.id}` && rec[x.id]?.d === 'approved');
+        if (dependents) { problems.push(t('undoDependentsFirst')); return 'skip'; }
       }
-    } else if (d === 'rejected') {
-      rec[f.id] = { d };
+      let f = finding;
+      if (d === 'approved') {
+        if ((finding.field === 'photo' || finding.field === 'document') && !findingFileUrl(finding)) { problems.push(t('fileDeleted')); return 'skip'; }
+        const pid = resolve(finding.personId);
+        if (!pid) return 'later';
+        f = { ...finding, personId: pid };
+      }
+      let base = next;
+      // undo a previous approval first
+      if (prev?.d === 'approved') {
+        if (prev.personBefore) base = upsertPerson(base, prev.personBefore);
+        for (const id of prev.createdIds ?? []) base = deletePerson(base, id);
+      }
+      if (d === 'approved') {
+        try {
+          const before = base.people[f.personId];
+          const applied = applyFinding(base, f);
+          const createdIds = Object.keys(applied.people).filter((id) => !base.people[id]);
+          rec[f.id] = { d, personBefore: f.type === 'field' ? before : undefined, createdIds };
+          created.push(...createdIds);
+          next = applied;
+        } catch {
+          problems.push(t('applyFailed'));
+          return 'skip';
+        }
+      } else {
+        delete rec[f.id];
+        if (d === 'rejected') rec[f.id] = { d };
+        next = base;
+      }
+      changed.push(finding);
+      return 'done';
+    };
+    // approvals may depend on each other ("new:x" needs x first): repeat until nothing moves
+    let todo = [...list];
+    for (let pass = 0; todo.length && pass < 30; pass++) {
+      const later = todo.filter((f) => step(f) === 'later');
+      if (later.length === todo.length) break;
+      todo = later;
     }
-    if (next !== data) commit(next, `${t('review')}: ${finding.personName ?? ''}`);
-    setDecisions(rec);
-    if (cloud) cloudStore.saveDecision(f.id, rec[f.id] ?? null).catch((e) => alert(`${t('saveFailed')}: ${e?.message ?? e}`));
-    if (cloud && d === 'rejected') dropRejectedFile(finding, next, rec);
+    for (const f of todo) problems.push(t('approveFirst', { name: f.personName ?? '?' }));
+    if (changed.length) {
+      if (next !== data) commit(next, `${t('review')}: ${changed.length === 1 ? changed[0].personName ?? '' : changed.length}`);
+      setDecisions(rec);
+      if (cloud) {
+        (async () => {
+          for (const f of changed) await cloudStore.saveDecision(f.id, rec[f.id] ?? null);
+        })().catch((e) => alert(`${t('saveFailed')}: ${e?.message ?? e}`));
+        if (d === 'rejected') for (const f of changed) dropRejectedFile(f, next, rec);
+      }
+    }
+    if (problems.length) {
+      const unique = [...new Set(problems)];
+      if (list.length === 1) alert(unique[0]);
+      else showToast(t('batchProblems', { n: String(problems.length), reason: unique[0] }));
+    }
+    return created;
   };
+  const decide = (finding: Finding, d: Decision | undefined) => { decideMany([finding], d); };
 
   /** The stored file of a rejected finding that nothing else needs any more (the tree or another open finding). */
   const droppableFile = (finding: Finding, tree: FamilyData, rec: Record<string, DecisionRecord>) => {
@@ -372,9 +434,25 @@ export default function App({ cloud }: { cloud?: CloudSession }) {
       findings={findings}
       decisions={simpleDecisions}
       resolveId={resolvePersonId}
+      relations={relations}
       onDecide={decide}
+      onDecideMany={decideMany}
       onShowPerson={openPerson}
       embedded
+    />
+  );
+
+  const researchTree = (
+    <ResearchTree
+      data={data}
+      graph={graph}
+      findings={findings}
+      decisions={simpleDecisions}
+      resolveId={resolvePersonId}
+      relations={relations}
+      viewerId={viewerId}
+      onDecideMany={decideMany}
+      onShowPerson={openPerson}
     />
   );
 
@@ -387,6 +465,7 @@ export default function App({ cloud }: { cloud?: CloudSession }) {
       onClick: () => setView('admin'),
     }] : []),
     ...(viewerId && graph.get(viewerId) ? [{ key: 'me', label: t('me'), icon: 'person', onClick: () => openPerson(viewerId) }] : []),
+    ...(canExport ? [{ key: 'export', label: t('exportShort'), icon: 'download', active: exporting, onClick: () => setExporting(true) }] : []),
   ];
   const accountMenu = (
     <AccountMenu
@@ -397,8 +476,9 @@ export default function App({ cloud }: { cloud?: CloudSession }) {
       roleLabel={cloud ? t(`role_${role}` as MsgKey) : undefined}
       badge={0}
       onMyCard={viewerId && graph.get(viewerId) ? () => openPerson(viewerId) : undefined}
+      onExport={canExport ? () => setExporting(true) : undefined}
       onLang={setLang}
-      onSignOut={cloud?.signOut}
+      onSignOut={isGuest ? undefined : cloud?.signOut}
     />
   );
   const personPanel = selected && (
@@ -434,6 +514,13 @@ export default function App({ cloud }: { cloud?: CloudSession }) {
           {!mobile && <div className="top-actions">{accountMenu}</div>}
         </header>
 
+        {isGuest && (
+          <div className="banner">
+            <span>{t('guestBanner')}</span>
+            <button className="btn primary small" onClick={cloud!.signOut}>{t('signIn')}</button>
+          </div>
+        )}
+
         {namesOnly && (
           <div className="banner">
             <span>{t('pendingBanner')}</span>
@@ -450,6 +537,7 @@ export default function App({ cloud }: { cloud?: CloudSession }) {
               {view !== 'admin' && hasPeople && (
                 <FilterChips
                   side={side} up={up} down={down} showDepth={view === 'tree'} onSide={setSide} onUp={setUp} onDown={setDown}
+                  maxUp={graph.get(focusId) ? graph.depthUp(focusId, side) : 1} maxDown={graph.get(focusId) ? graph.depthDown(focusId) : 0}
                   onMe={view === 'tree' && viewerId && graph.get(viewerId) ? () => openPerson(viewerId) : undefined}
                 />
               )}
@@ -465,6 +553,7 @@ export default function App({ cloud }: { cloud?: CloudSession }) {
                           pendingSuggestions,
                         ],
                         research: [research, pendingFindings],
+                        researchTree: [researchTree, 0],
                         users: [
                           <UsersAdmin
                             graph={graph}
@@ -504,7 +593,7 @@ export default function App({ cloud }: { cloud?: CloudSession }) {
                       }}
                     />
                   ) : (
-                    <div className="review"><div className="review-inner">{research}</div></div>
+                    <AdminPage tab={adminTab} onTab={setAdminTab} tabs={{ research: [research, pendingFindings], researchTree: [researchTree, 0] }} />
                   )
                 ) : view === 'map' && !namesOnly ? (
                   <MapView graph={graph} relations={relations} side={side} isAdmin={isAdmin} onOpenPerson={openPerson} />
@@ -521,6 +610,7 @@ export default function App({ cloud }: { cloud?: CloudSession }) {
                       down={down}
                       onSelect={openPerson}
                       panelOpen={Boolean(selected)}
+                      overview={overview}
                     />
                     {mobile && personPanel}
                   </>
@@ -612,6 +702,17 @@ export default function App({ cloud }: { cloud?: CloudSession }) {
             />
           );
         })()}
+
+        {exporting && (
+          <ExportDialog
+            graph={graph}
+            viewerId={viewerId}
+            currentId={selectedId ?? focusId}
+            findings={isAdmin ? findings : []}
+            decisions={decisions}
+            onClose={() => setExporting(false)}
+          />
+        )}
 
         {gallery && data.people[gallery.personId] && (
           <DocumentsGallery

@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import type { MsgKey } from '../lib/i18n';
 import { useLang } from '../lib/LangContext';
 
-export type AdminTab = 'suggestions' | 'research' | 'users' | 'import';
+export type AdminTab = 'suggestions' | 'research' | 'researchTree' | 'users' | 'import';
 
 interface Props {
   tab: AdminTab;
@@ -12,7 +12,7 @@ interface Props {
 }
 
 const LABEL: Record<AdminTab, MsgKey> = {
-  suggestions: 'tabSuggestions', research: 'tabResearch', users: 'tabUsers', import: 'tabImport',
+  suggestions: 'tabSuggestions', research: 'tabResearch', researchTree: 'tabResearchTree', users: 'tabUsers', import: 'tabImport',
 };
 
 /** The admin area: suggestions from the family, research findings, users, one-time import. */
@@ -20,19 +20,29 @@ export function AdminPage({ tab, onTab, tabs }: Props) {
   const { t } = useLang();
   const keys = (Object.keys(LABEL) as AdminTab[]).filter((k) => tabs[k]);
   const current = tabs[tab] ? tab : keys[0];
+  const nav = keys.length > 1 && (
+    <nav className="admin-tabs" role="tablist">
+      {keys.map((k) => (
+        <button key={k} role="tab" className={`admin-tab${k === current ? ' on' : ''}`} onClick={() => onTab(k)}>
+          {t(LABEL[k])}
+          {tabs[k]![1] > 0 && <span className="badge">{tabs[k]![1]}</span>}
+        </button>
+      ))}
+    </nav>
+  );
+  // the research tree needs the whole area, not a reading column
+  if (current === 'researchTree') {
+    return (
+      <div className="admin-wide">
+        <div className="admin-wide-nav">{nav}</div>
+        <div className="admin-wide-body">{tabs[current]![0]}</div>
+      </div>
+    );
+  }
   return (
     <div className="review">
       <div className="review-inner">
-        {keys.length > 1 && (
-          <nav className="admin-tabs" role="tablist">
-            {keys.map((k) => (
-              <button key={k} role="tab" className={`admin-tab${k === current ? ' on' : ''}`} onClick={() => onTab(k)}>
-                {t(LABEL[k])}
-                {tabs[k]![1] > 0 && <span className="badge">{tabs[k]![1]}</span>}
-              </button>
-            ))}
-          </nav>
-        )}
+        {nav}
         {current && tabs[current]![0]}
       </div>
     </div>
