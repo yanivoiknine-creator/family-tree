@@ -10,7 +10,7 @@ import { FilterChips } from './MobileChrome';
 import { FindingCard } from './ReviewPage';
 import { Avatar } from './Avatar';
 import { Icon } from './Icons';
-import { flag, gens, hashParams, oneOf, pick, recall, remember, setHash, showGens } from '../lib/urlState';
+import { flag, gens, hashParams, onHistoryMove, oneOf, pick, pushHash, recall, remember, setHash, showGens } from '../lib/urlState';
 import { ALL_GENS } from './MobileChrome';
 
 /** address keys of the research tree (cleared by App when it is not shown) */
@@ -139,14 +139,24 @@ export function ResearchTree({ data, graph, findings, decisions, resolveId, rela
   const highs = pending.filter((f) => f.confidence === 'high' && resolveId(f.personId));
   const totalPending = findings.filter((f) => !decisions[f.id]).length;
 
+  /** picking a person is a step in the browser's history (Back returns to the previous one) */
+  const go = (key: string, focus: string) => {
+    pushHash({ rp: key, rf: focus !== viewerId ? focus : null });
+    setSel(key);
+    setFocusId(focus);
+  };
   const select = (id: string) => {
     const fid = preview.ghostOf.get(id);
-    if (fid) setSel(`g:${fid}`); // a proposed person: just select it
-    else {
-      setSel(id);
-      setFocusId(id);
-    }
+    if (fid) go(`g:${fid}`, focusId); // a proposed person: just select it
+    else go(id, id);
   };
+  useEffect(() => onHistoryMove(() => {
+    const l = hashParams();
+    const f = l.get('rf');
+    const focus = f && graph.get(f) ? f : graph.get(viewerId) ? viewerId : focusId;
+    setFocusId(focus);
+    setSel(l.get('rp') ?? focus);
+  }), [graph, viewerId, focusId]);
 
   const decide = (list: Finding[], d: Decision | undefined) => {
     const created = onDecideMany(list, d);
@@ -161,8 +171,7 @@ export function ResearchTree({ data, graph, findings, decisions, resolveId, rela
       .sort((a, b) => (relations?.get(a)?.distance ?? 999) - (relations?.get(b)?.distance ?? 999) || a.localeCompare(b));
     if (!ids.length) return;
     const id = ids[(ids.indexOf(selId ?? '') + 1) % ids.length];
-    setSel(id);
-    setFocusId(id);
+    go(id, id);
   };
 
   const center = pg.get(focusId) ? focusId : Object.keys(pg.people)[0] ?? '';

@@ -29,7 +29,7 @@ import { DocumentsGallery } from './components/Documents';
 import { ExportDialog } from './components/ExportDialog';
 import { RTREE_KEYS, ResearchTree } from './components/ResearchTree';
 import { ALL_GENS, AccountMenu, FilterChips, NavBar, type NavItem } from './components/MobileChrome';
-import { gens, hashParams, oneOf, pick, recall, remember, setHash, showGens } from './lib/urlState';
+import { gens, hashParams, onHistoryMove, oneOf, pick, pushHash, recall, remember, setHash, showGens } from './lib/urlState';
 import { PersonReview, personSuggestions } from './components/PersonReview';
 import { MAP_KEYS } from './components/MapView';
 import { useIsMobile } from './lib/useMobile';
@@ -90,6 +90,8 @@ export default function App({ cloud }: { cloud?: CloudSession }) {
   const [overview, setOverview] = useState(start.overview);
   /** the address is read once the tree has loaded; only then is it kept in step */
   const [urlReady, setUrlReady] = useState(false);
+  /** where the tree is centred when nobody is picked (the viewer, or for guests the family's home person) */
+  const [homeId, setHomeId] = useState('');
   const [view, setView] = useState<'tree' | 'admin' | 'map'>('tree');
   const mobile = useIsMobile();
   const [adminTab, setAdminTab] = useState<AdminTab>('suggestions');
@@ -136,6 +138,7 @@ export default function App({ cloud }: { cloud?: CloudSession }) {
         const viewer = isGuest ? '' : [own, viewerId].find((id) => id && d.people[id]) ?? firstId;
         setViewerId(viewer);
         const center = isGuest ? (home && d.people[home] ? home : firstId) : viewer;
+        setHomeId(center);
         // deep links: #p=<person shown> &f=<person in the middle> &view=map|admin &tab=<admin tab>
         const params = hashParams();
         const linked = params.get('p');
@@ -209,7 +212,27 @@ export default function App({ cloud }: { cloud?: CloudSession }) {
       ...(view === 'map' ? {} : clear(MAP_KEYS)),
     });
   }, [urlReady, view, adminTab, selectedId, focusId, overview, side, up, down, viewerId]);
-  useEffect(() => { if (!isGuest) remember('tree', { side, up, down }); }, [side, up, down]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!isGuest) remember('tree', { side, up, down }); }, [side, up, down]);
+
+  // Back / Forward in the browser: show what the address says
+  useEffect(() => onHistoryMove(() => {
+    if (!data) return;
+    const params = hashParams();
+    const has = (id: string | null): id is string => Boolean(id && data.people[id]);
+    const p = params.get('p');
+    const f = params.get('f');
+    setSelectedId(has(p) ? p : undefined);
+    setFocusId(has(f) ? f : has(p) ? p : viewerId || homeId);
+    if (has(p) || has(f)) setOverview(false);
+    const v = params.get('view');
+    const tab = oneOf<AdminTab>('suggestions', 'research', 'researchTree', 'users', 'import')(params.get('tab'));
+    setView(v === 'map' && !namesOnly ? 'map' : v === 'admin' && isAdmin ? 'admin' : 'tree');
+    if (tab) setAdminTab(tab);
+    // the tree filter: what is not in the address is the default
+    setSide(oneOf<Side>('all', 'father', 'mother')(params.get('side')) ?? 'all');
+    setUp(gens(ALL_GENS)(params.get('up')) ?? 3);
+    setDown(gens(ALL_GENS)(params.get('down')) ?? 2);
+  }), [data, viewerId, homeId, isAdmin, namesOnly]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const graph = useMemo(() => (data ? new FamilyGraph(data) : null), [data]);
   const relations = useMemo(() => (graph && viewerId ? new RelationFinder(graph, viewerId) : undefined), [graph, viewerId]);
@@ -254,6 +277,8 @@ export default function App({ cloud }: { cloud?: CloudSession }) {
   };
 
   const openPerson = (id: string) => {
+    // a new step in the browser's history, so Back returns to the previous person (or screen)
+    if (urlReady) pushHash({ p: id, f: null, view: null, tab: null, pt: undefined });
     setOverview(false);
     setFocusId(id);
     setSelectedId(id);

@@ -9,8 +9,9 @@ import { prefs } from './prefs';
 
 export const hashParams = () => new URLSearchParams(location.hash.slice(1));
 
-/** Change some keys of the address: `undefined` leaves a key alone, null / '' / false removes it. */
-export function setHash(patch: Record<string, string | number | boolean | null | undefined>) {
+type Patch = Record<string, string | number | boolean | null | undefined>;
+
+function patched(patch: Patch): string {
   const p = hashParams();
   for (const [k, v] of Object.entries(patch)) {
     if (v === undefined) continue;
@@ -18,8 +19,26 @@ export function setHash(patch: Record<string, string | number | boolean | null |
     else p.set(k, String(v));
   }
   const s = p.toString();
-  const url = location.pathname + location.search + (s ? `#${s}` : '');
-  if (url !== location.pathname + location.search + location.hash) history.replaceState(history.state, '', url);
+  return location.pathname + location.search + (s ? `#${s}` : '');
+}
+const here = () => location.pathname + location.search + location.hash;
+
+/** Change some keys of the address in place: `undefined` leaves a key alone, null / '' / false removes it. */
+export function setHash(patch: Patch) {
+  const url = patched(patch);
+  if (url !== here()) history.replaceState(history.state, '', url);
+}
+
+/** The same, as a new step in the browser's history (the back button returns to the previous address). */
+export function pushHash(patch: Patch) {
+  const url = patched(patch);
+  if (url !== here()) history.pushState(history.state, '', url);
+}
+
+/** Run `fn` when the user goes back or forward in the browser. */
+export function onHistoryMove(fn: () => void): () => void {
+  window.addEventListener('popstate', fn);
+  return () => window.removeEventListener('popstate', fn);
 }
 
 export function recall<T>(key: string): Partial<T> {

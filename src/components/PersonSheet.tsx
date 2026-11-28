@@ -10,7 +10,7 @@ import { Avatar } from './Avatar';
 import { Thumb } from './Documents';
 import { Icon } from './Icons';
 import type { Props } from './PersonPanel';
-import { hashParams, oneOf, setHash } from '../lib/urlState';
+import { hashParams, onHistoryMove, oneOf, setHash } from '../lib/urlState';
 
 type Tab = 'details' | 'family' | 'docs' | 'review';
 
@@ -74,6 +74,7 @@ export function MobileSheet({
   // the open tab is part of the address (#pt=family), so a link opens it
   const [tab, setTab] = useState<Tab>(() => oneOf<Tab>('details', 'family', 'docs', 'review')(hashParams().get('pt')) ?? 'details');
   useEffect(() => { setHash({ pt: tab === 'details' ? null : tab }); }, [tab]);
+  useEffect(() => onHistoryMove(() => setTab(oneOf<Tab>('details', 'family', 'docs', 'review')(hashParams().get('pt')) ?? 'details')), []);
   const shownTab: Tab = tab === 'review' && !review ? 'details' : tab;
   const [addOpen, setAddOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
